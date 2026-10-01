@@ -1,0 +1,13 @@
+{
+  "name": "pet-shop-platform",
+  "version": "0.0.0",
+  "private": true,
+  "packageManager": "pnpm@11.19.0",
+  "scripts": {
+    "dev": "pnpm --filter @pet-shop/admin dev",
+    "build": "pnpm -r --if-present run build",
+    "typecheck": "pnpm -r --if-present run typecheck",
+    "lint": "pnpm -r --if-present run lint",
+    "check": "pnpm typecheck && pnpm lint && pnpm build"
+  }
+}
