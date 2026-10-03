@@ -55,3 +55,19 @@
 **Motivo:** una membresía puede otorgar o revocar acceso sin alterar la identidad del usuario.
 
 **Consecuencias:** RLS valida la membresía activa y los roles iniciales son `owner`, `admin` y `staff`. La administración de escrituras no forma parte de esta fundación.
+
+## D008 — Product y ProductVariant tienen responsabilidades distintas
+
+**Decisión:** `products` modela la identidad comercial y `product_variants` las presentaciones vendibles. Todo producto se operará mediante al menos una variante cuando exista UX operativa.
+
+**Motivo:** una misma identidad comercial puede venderse en presentaciones distintas sin modelar SKU, barcode ni futuras operaciones de venta en el nivel equivocado.
+
+**Consecuencias:** SKU y barcode pertenecen a `product_variants`; precios y stock se incorporarán en sprints posteriores sobre la variante vendible.
+
+## D009 — Ownership explícito en variantes y barcodes
+
+**Decisión:** `product_variants` y `product_barcodes` conservan `business_id` además de su referencia al padre.
+
+**Motivo:** permite foreign keys compuestas que impiden cruzar businesses, RLS directa y constraints de SKU y barcode únicos por business.
+
+**Consecuencias:** las foreign keys compuestas fuerzan que el business duplicado coincida con el product o variant padre; no puede desincronizarse por inserciones o actualizaciones válidas.

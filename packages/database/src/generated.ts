@@ -1,5 +1,3 @@
-// Generated with: supabase gen types typescript --linked --schema public
-// Project ref: caegoufmwmuckuskkzjs
 export type Json =
   | string
   | number
@@ -9,9 +7,7 @@ export type Json =
   | Json[]
 
 export type Database = {
-  __InternalSupabase: {
-    PostgrestVersion: "14.18"
-  }
+  __InternalSupabase: { PostgrestVersion: "14.18" }
   public: {
     Tables: {
       branches: {
@@ -19,6 +15,12 @@ export type Database = {
         Insert: { business_id: string; created_at?: string; id?: string; is_active?: boolean; name: string }
         Update: { business_id?: string; created_at?: string; id?: string; is_active?: boolean; name?: string }
         Relationships: [{ foreignKeyName: "branches_business_id_fkey"; columns: ["business_id"]; isOneToOne: false; referencedRelation: "businesses"; referencedColumns: ["id"] }]
+      }
+      brands: {
+        Row: { business_id: string; created_at: string; id: string; is_active: boolean; name: string }
+        Insert: { business_id: string; created_at?: string; id?: string; is_active?: boolean; name: string }
+        Update: { business_id?: string; created_at?: string; id?: string; is_active?: boolean; name?: string }
+        Relationships: [{ foreignKeyName: "brands_business_id_fkey"; columns: ["business_id"]; isOneToOne: false; referencedRelation: "businesses"; referencedColumns: ["id"] }]
       }
       business_memberships: {
         Row: { business_id: string; created_at: string; id: string; is_active: boolean; role: Database["public"]["Enums"]["business_role"]; user_id: string }
@@ -32,6 +34,34 @@ export type Database = {
         Update: { created_at?: string; id?: string; name?: string }
         Relationships: []
       }
+      categories: {
+        Row: { business_id: string; created_at: string; id: string; is_active: boolean; name: string }
+        Insert: { business_id: string; created_at?: string; id?: string; is_active?: boolean; name: string }
+        Update: { business_id?: string; created_at?: string; id?: string; is_active?: boolean; name?: string }
+        Relationships: [{ foreignKeyName: "categories_business_id_fkey"; columns: ["business_id"]; isOneToOne: false; referencedRelation: "businesses"; referencedColumns: ["id"] }]
+      }
+      product_barcodes: {
+        Row: { business_id: string; code: string; created_at: string; id: string; is_primary: boolean; variant_id: string }
+        Insert: { business_id: string; code: string; created_at?: string; id?: string; is_primary?: boolean; variant_id: string }
+        Update: { business_id?: string; code?: string; created_at?: string; id?: string; is_primary?: boolean; variant_id?: string }
+        Relationships: [{ foreignKeyName: "product_barcodes_variant_id_business_id_fkey"; columns: ["variant_id", "business_id"]; isOneToOne: false; referencedRelation: "product_variants"; referencedColumns: ["id", "business_id"] }]
+      }
+      product_variants: {
+        Row: { business_id: string; created_at: string; id: string; is_active: boolean; name: string; product_id: string; sku: string | null }
+        Insert: { business_id: string; created_at?: string; id?: string; is_active?: boolean; name: string; product_id: string; sku?: string | null }
+        Update: { business_id?: string; created_at?: string; id?: string; is_active?: boolean; name?: string; product_id?: string; sku?: string | null }
+        Relationships: [{ foreignKeyName: "product_variants_product_id_business_id_fkey"; columns: ["product_id", "business_id"]; isOneToOne: false; referencedRelation: "products"; referencedColumns: ["id", "business_id"] }]
+      }
+      products: {
+        Row: { brand_id: string | null; business_id: string; category_id: string | null; created_at: string; description: string | null; id: string; is_active: boolean; name: string }
+        Insert: { brand_id?: string | null; business_id: string; category_id?: string | null; created_at?: string; description?: string | null; id?: string; is_active?: boolean; name: string }
+        Update: { brand_id?: string | null; business_id?: string; category_id?: string | null; created_at?: string; description?: string | null; id?: string; is_active?: boolean; name?: string }
+        Relationships: [
+          { foreignKeyName: "products_brand_id_business_id_fkey"; columns: ["brand_id", "business_id"]; isOneToOne: false; referencedRelation: "brands"; referencedColumns: ["id", "business_id"] },
+          { foreignKeyName: "products_business_id_fkey"; columns: ["business_id"]; isOneToOne: false; referencedRelation: "businesses"; referencedColumns: ["id"] },
+          { foreignKeyName: "products_category_id_business_id_fkey"; columns: ["category_id", "business_id"]; isOneToOne: false; referencedRelation: "categories"; referencedColumns: ["id", "business_id"] },
+        ]
+      }
       profiles: {
         Row: { created_at: string; display_name: string | null; id: string }
         Insert: { created_at?: string; display_name?: string | null; id: string }
@@ -40,7 +70,10 @@ export type Database = {
       }
     }
     Views: { [_ in never]: never }
-    Functions: { has_active_business_membership: { Args: { target_business_id: string }; Returns: boolean } }
+    Functions: {
+      has_active_business_membership: { Args: { target_business_id: string }; Returns: boolean }
+      has_active_business_role: { Args: { allowed_roles: Database["public"]["Enums"]["business_role"][]; target_business_id: string }; Returns: boolean }
+    }
     Enums: { business_role: "owner" | "admin" | "staff" }
     CompositeTypes: { [_ in never]: never }
   }
@@ -77,9 +110,9 @@ export type TablesUpdate<
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
     : never) = never,
 > = DefaultSchemaTableNameOrOptions extends { schema: keyof DatabaseWithoutInternals }
-  ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends { Update: infer I } ? I : never
+  ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends { Update: infer U } ? U : never
   : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
-    ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends { Update: infer I } ? I : never
+    ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends { Update: infer U } ? U : never
     : never
 
 export type Enums<
