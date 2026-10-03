@@ -71,3 +71,11 @@
 **Motivo:** permite foreign keys compuestas que impiden cruzar businesses, RLS directa y constraints de SKU y barcode únicos por business.
 
 **Consecuencias:** las foreign keys compuestas fuerzan que el business duplicado coincida con el product o variant padre; no puede desincronizarse por inserciones o actualizaciones válidas.
+
+## D010 — Precio y costo actuales separados y en centavos
+
+**Decisión:** guardar precio de venta y costo en tablas actuales separadas por variante, con montos enteros en centavos y tablas de historial independientes alimentadas por triggers.
+
+**Motivo:** el costo no debe exponerse a staff, y el historial debe ser una garantía de base de datos, no una responsabilidad del frontend.
+
+**Consecuencias:** una ausencia de fila expresa importe no definido; una limpieza registra un valor nulo en el historial. Los ajustes masivos actúan sólo sobre precios existentes mediante una RPC transaccional que valida business y rol.

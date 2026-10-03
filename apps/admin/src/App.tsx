@@ -99,6 +99,40 @@ function humanError(error: PostgrestError | null) {
     return "No tenés permiso para realizar esta acción.";
   return "No se pudo guardar. Verificá los datos e intentá nuevamente.";
 }
+function formatPesos(amountCents: number | null | undefined) {
+  if (amountCents === null || amountCents === undefined) return "Sin definir";
+  return new Intl.NumberFormat("es-AR", {
+    style: "currency",
+    currency: "ARS",
+    minimumFractionDigits: amountCents % 100 === 0 ? 0 : 2,
+    maximumFractionDigits: 2,
+  }).format(amountCents / 100);
+}
+function parsePesos(value: string): number | null {
+  const raw = value.replace(/[\s$]/g, "");
+  if (!raw) return null;
+  let integer = "";
+  let decimals = "";
+  const argentine = raw.match(/^(\d{1,3}(?:\.\d{3})+|\d+)(?:,(\d{1,2}))?$/);
+  const decimalDot = raw.match(/^(\d+)(?:\.(\d{1,2}))?$/);
+  if (argentine) [, integer, decimals = ""] = argentine;
+  else if (decimalDot) [, integer, decimals = ""] = decimalDot;
+  else return null;
+  const cents = Number(integer.split(".").join("")) * 100 + Number(`${decimals}00`.slice(0, 2));
+  return Number.isSafeInteger(cents) ? cents : null;
+}
+function pesosInput(amountCents: number | null | undefined) {
+  if (amountCents === null || amountCents === undefined) return "";
+  const whole = Math.floor(amountCents / 100);
+  const decimals = amountCents % 100;
+  return decimals ? `${whole},${decimals.toString().padStart(2, "0")}` : `${whole}`;
+}
+function parsePercent(value: string): number | null {
+  const raw = value.trim().replace(",", ".");
+  if (!/^-?\d+(?:\.\d+)?$/.test(raw)) return null;
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) && parsed >= -100 ? parsed : null;
+}
 function Loading({ message }: { message: string }) {
   return (
     <main className="shell">
@@ -235,6 +269,7 @@ function Sidebar({
         <p>{name}</p>
         <nav>
           {item("/", "Productos")}
+          {item("/prices", "Precios")}
           {item("/brands", "Marcas")}
           {item("/categories", "Categorías")}
         </nav>
@@ -385,6 +420,15 @@ function Catalog({
         categories={categories}
         canEdit={canEdit}
         reload={load}
+      />
+    );
+  else if (path === "/prices")
+    page = (
+      <Pricing
+        businessId={businessId}
+        canEdit={canEdit}
+        products={products}
+        role={role}
       />
     );
   else if (path.startsWith("/products/"))
@@ -577,6 +621,246 @@ function Products({
           </table>
         </div>
       )}
+    </>
+  );
+}
+
+type PricingRow = {
+  variantId: string;
+  productName: string;
+  variantName: string;
+  sku: string;
+  price: number | null;
+  cost: number | null;
+};
+type HistoryItem = {
+  id: string;
+  type: "Precio" | "Costo";
+  amount_cents: number | null;
+  changed_at: string;
+  changed_by: string | null;
+};
+
+function Pricing({
+  businessId,
+  canEdit,
+  products,
+  role,
+}: {
+  businessId: string;
+  canEdit: boolean;
+  products: Product[];
+  role: Role;
+}) {
+  const [prices, setPrices] = useState<Record<string, number>>({});
+  const [costs, setCosts] = useState<Record<string, number>>({});
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [editing, setEditing] = useState<PricingRow | null>(null);
+  const [priceInput, setPriceInput] = useState("");
+  const [costInput, setCostInput] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [selected, setSelected] = useState<string[]>([]);
+  const [percentInput, setPercentInput] = useState("");
+  const [bulkSaving, setBulkSaving] = useState(false);
+  const [historyTarget, setHistoryTarget] = useState<PricingRow | null>(null);
+  const [history, setHistory] = useState<HistoryItem[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+
+  const loadPricing = useCallback(async () => {
+    const supabase = getSupabaseClient();
+    if (!supabase) return;
+    setLoading(true);
+    setError(null);
+    const priceResult = await supabase
+      .from("variant_prices")
+      .select("variant_id,amount_cents")
+      .eq("business_id", businessId);
+    if (priceResult.error) {
+      setError(humanError(priceResult.error));
+      setLoading(false);
+      return;
+    }
+    let costResult: { data: { variant_id: string; amount_cents: number }[] | null; error: PostgrestError | null } = {
+      data: [],
+      error: null,
+    };
+    if (canEdit)
+      costResult = await supabase
+        .from("variant_costs")
+        .select("variant_id,amount_cents")
+        .eq("business_id", businessId);
+    if (costResult.error) {
+      setError(humanError(costResult.error));
+      setLoading(false);
+      return;
+    }
+    setPrices(Object.fromEntries((priceResult.data ?? []).map((item) => [item.variant_id, item.amount_cents])));
+    setCosts(Object.fromEntries((costResult.data ?? []).map((item) => [item.variant_id, item.amount_cents])));
+    setLoading(false);
+  }, [businessId, canEdit]);
+  useEffect(() => {
+    void loadPricing();
+  }, [loadPricing]);
+
+  const rows = useMemo<PricingRow[]>(
+    () =>
+      products.flatMap((product) =>
+        product.variants
+          .filter((variant): variant is Variant & { id: string } => Boolean(variant.id))
+          .map((variant) => ({
+            variantId: variant.id,
+            productName: product.name,
+            variantName: variant.name,
+            sku: variant.sku,
+            price: prices[variant.id] ?? null,
+            cost: canEdit ? (costs[variant.id] ?? null) : null,
+          })),
+      ),
+    [canEdit, costs, prices, products],
+  );
+  const selectedRows = rows.filter((row) => selected.includes(row.variantId));
+  const adjustment = parsePercent(percentInput);
+  const preview = adjustment === null
+    ? []
+    : selectedRows.map((row) => ({ ...row, nextPrice: Math.round(row.price! * (1 + adjustment / 100)) }));
+
+  function startEdit(row: PricingRow) {
+    setEditing(row);
+    setPriceInput(pesosInput(row.price));
+    setCostInput(pesosInput(row.cost));
+    setError(null);
+    setNotice(null);
+  }
+  function amountFromInput(input: string) {
+    return input.trim() ? parsePesos(input) : null;
+  }
+  async function saveIndividual(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!editing || !canEdit) return;
+    const parsedPrice = amountFromInput(priceInput);
+    const parsedCost = amountFromInput(costInput);
+    if ((priceInput.trim() && parsedPrice === null) || (costInput.trim() && parsedCost === null)) {
+      setError("Ingresá importes válidos, sin valores negativos y con hasta dos decimales.");
+      return;
+    }
+    const supabase = getSupabaseClient();
+    if (!supabase) return;
+    setSaving(true);
+    setError(null);
+    const writes = [
+      parsedPrice === null
+        ? supabase.from("variant_prices").delete().eq("variant_id", editing.variantId).eq("business_id", businessId)
+        : supabase.from("variant_prices").upsert({ variant_id: editing.variantId, business_id: businessId, amount_cents: parsedPrice }, { onConflict: "variant_id" }),
+      parsedCost === null
+        ? supabase.from("variant_costs").delete().eq("variant_id", editing.variantId).eq("business_id", businessId)
+        : supabase.from("variant_costs").upsert({ variant_id: editing.variantId, business_id: businessId, amount_cents: parsedCost }, { onConflict: "variant_id" }),
+    ];
+    const results = await Promise.all(writes);
+    const failed = results.find((result) => result.error);
+    setSaving(false);
+    if (failed?.error) return setError(humanError(failed.error));
+    setEditing(null);
+    setNotice("Los importes se guardaron correctamente.");
+    await loadPricing();
+  }
+  async function openHistory(row: PricingRow) {
+    if (!canEdit) return;
+    const supabase = getSupabaseClient();
+    if (!supabase) return;
+    setHistoryTarget(row);
+    setHistory([]);
+    setHistoryLoading(true);
+    setError(null);
+    const [priceResult, costResult] = await Promise.all([
+      supabase.from("variant_price_history").select("id,amount_cents,changed_at,changed_by").eq("business_id", businessId).eq("variant_id", row.variantId).order("changed_at", { ascending: false }),
+      supabase.from("variant_cost_history").select("id,amount_cents,changed_at,changed_by").eq("business_id", businessId).eq("variant_id", row.variantId).order("changed_at", { ascending: false }),
+    ]);
+    setHistoryLoading(false);
+    const failure = priceResult.error ?? costResult.error;
+    if (failure) return setError(humanError(failure));
+    setHistory([
+      ...(priceResult.data ?? []).map((item) => ({ ...item, type: "Precio" as const })),
+      ...(costResult.data ?? []).map((item) => ({ ...item, type: "Costo" as const })),
+    ].sort((left, right) => right.changed_at.localeCompare(left.changed_at)));
+  }
+  async function applyBulk() {
+    if (!selectedRows.length) return setError("Seleccioná al menos una variante con precio definido.");
+    if (adjustment === null) return setError("Ingresá un porcentaje válido (puede ser negativo hasta -100).");
+    const supabase = getSupabaseClient();
+    if (!supabase) return;
+    setBulkSaving(true);
+    setError(null);
+    const { error: bulkError } = await supabase.rpc("adjust_variant_prices", {
+      target_business_id: businessId,
+      target_variant_ids: selectedRows.map((row) => row.variantId),
+      adjustment_percent: adjustment,
+    });
+    setBulkSaving(false);
+    if (bulkError) return setError(humanError(bulkError));
+    setSelected([]);
+    setPercentInput("");
+    setNotice("La actualización masiva se aplicó correctamente.");
+    await loadPricing();
+  }
+  const toggleSelected = (variantId: string) =>
+    setSelected((current) => current.includes(variantId) ? current.filter((id) => id !== variantId) : [...current, variantId]);
+
+  return (
+    <>
+      <header className="page-header">
+        <div>
+          <p className="eyebrow">Catálogo</p>
+          <h1>Precios</h1>
+          <p className="subtle">Administrá los importes por presentación. {role === "staff" ? "Tu rol muestra únicamente el precio de venta." : "Los costos y márgenes son privados para administración."}</p>
+        </div>
+      </header>
+      {notice && <p className="notice" role="status">{notice}</p>}
+      {error && <p className="form-error" role="alert">{error}</p>}
+      {canEdit && (
+        <section className="bulk-panel">
+          <div>
+            <h2>Actualizar precios seleccionados</h2>
+            <p className="muted">Aplicá un porcentaje sobre los precios de venta. Los costos no cambian.</p>
+          </div>
+          <label>
+            Ajuste porcentual
+            <input aria-label="Ajuste porcentual" inputMode="decimal" onChange={(event) => setPercentInput(event.target.value)} placeholder="Ej. 8 o -5" value={percentInput} />
+          </label>
+          <button disabled={bulkSaving || !selectedRows.length || adjustment === null} onClick={() => void applyBulk()} type="button">
+            {bulkSaving ? "Aplicando…" : "Confirmar actualización"}
+          </button>
+        </section>
+      )}
+      {canEdit && selectedRows.length > 0 && adjustment !== null && (
+        <section className="preview-panel">
+          <h2>Vista previa</h2>
+          <table>
+            <thead><tr><th>Producto</th><th>Actual</th><th>Nuevo</th></tr></thead>
+            <tbody>{preview.map((row) => <tr key={row.variantId}><td>{row.productName} · {row.variantName}</td><td>{formatPesos(row.price)}</td><td>{formatPesos(row.nextPrice)}</td></tr>)}</tbody>
+          </table>
+        </section>
+      )}
+      {loading ? <StateBox title="Cargando precios…" /> : !rows.length ? <StateBox title="Todavía no hay presentaciones" text="Cuando cargues productos con presentaciones, vas a poder definir sus precios acá." /> : (
+        <div className="table-wrap">
+          <table>
+            <thead><tr>{canEdit && <th aria-label="Seleccionar" />}<th>Producto</th><th>Presentación</th><th>SKU</th><th>Precio de venta</th>{canEdit && <><th>Costo</th><th>Ganancia bruta</th><th>Margen bruto</th><th /></>}</tr></thead>
+            <tbody>{rows.map((row) => {
+              const hasMargin = row.price !== null && row.cost !== null;
+              const grossProfit = hasMargin ? row.price! - row.cost! : null;
+              const margin = hasMargin && row.price! > 0 ? (grossProfit! / row.price!) * 100 : null;
+              return <tr key={row.variantId}>
+                {canEdit && <td><input aria-label={`Seleccionar ${row.productName} ${row.variantName}`} checked={selected.includes(row.variantId)} disabled={row.price === null} onChange={() => toggleSelected(row.variantId)} type="checkbox" /></td>}
+                <td><strong>{row.productName}</strong></td><td>{row.variantName}</td><td>{row.sku || "—"}</td><td>{formatPesos(row.price)}</td>
+                {canEdit && <><td>{formatPesos(row.cost)}</td><td>{grossProfit === null ? "Sin datos" : formatPesos(grossProfit)}</td><td>{margin === null ? "Sin datos" : `${margin.toLocaleString("es-AR", { maximumFractionDigits: 1 })} %`}</td><td><div className="actions"><button className="link-button" onClick={() => startEdit(row)} type="button">Editar</button><button className="link-button" onClick={() => void openHistory(row)} type="button">Historial</button></div></td></>}
+              </tr>;
+            })}</tbody>
+          </table>
+        </div>
+      )}
+      {editing && <div className="modal-backdrop" role="presentation"><section aria-modal="true" className="modal" role="dialog"><header className="section-header"><div><h2>Editar importes</h2><p>{editing.productName} · {editing.variantName}</p></div><button className="secondary compact" disabled={saving} onClick={() => setEditing(null)} type="button">Cerrar</button></header><form className="grid" onSubmit={(event) => void saveIndividual(event)}><label>Precio de venta<input autoFocus inputMode="decimal" onChange={(event) => setPriceInput(event.target.value)} placeholder="Ej. 12500,50" value={priceInput} /></label><label>Costo<input inputMode="decimal" onChange={(event) => setCostInput(event.target.value)} placeholder="Ej. 8000" value={costInput} /></label><p className="muted wide">Dejá un campo vacío para quitar su importe actual.</p><div className="form-actions wide"><button disabled={saving} type="submit">{saving ? "Guardando…" : "Guardar importes"}</button><button className="secondary" disabled={saving} onClick={() => setEditing(null)} type="button">Cancelar</button></div></form></section></div>}
+      {historyTarget && <div className="modal-backdrop" role="presentation"><section aria-modal="true" className="modal history-modal" role="dialog"><header className="section-header"><div><h2>Historial de importes</h2><p>{historyTarget.productName} · {historyTarget.variantName}</p></div><button className="secondary compact" onClick={() => setHistoryTarget(null)} type="button">Cerrar</button></header>{historyLoading ? <p className="muted">Cargando historial…</p> : !history.length ? <p className="muted">Todavía no hay cambios registrados.</p> : <div className="table-wrap"><table><thead><tr><th>Fecha</th><th>Tipo</th><th>Valor</th><th>Usuario</th></tr></thead><tbody>{history.map((item) => <tr key={`${item.type}-${item.id}`}><td>{new Intl.DateTimeFormat("es-AR", { dateStyle: "short", timeStyle: "short" }).format(new Date(item.changed_at))}</td><td>{item.type}</td><td>{item.amount_cents === null ? "Importe quitado" : formatPesos(item.amount_cents)}</td><td>{item.changed_by ? "Usuario registrado" : "No disponible"}</td></tr>)}</tbody></table></div>}</section></div>}
     </>
   );
 }

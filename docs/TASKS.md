@@ -17,6 +17,10 @@
 - Se aplicó `supabase/migrations/20261003000000_catalog_foundation.sql` al proyecto Supabase enlazado y se regeneraron los tipos oficiales.
 - Se verificaron remotamente el aislamiento por business, permisos de owner/admin/staff, constraints de SKU y barcode, y las foreign keys compuestas de ownership. Los datos de prueba aislados se eliminaron al finalizar.
 
+## Resuelto — Sprint 4
+
+- Se aplicó `supabase/migrations/20261003010000_variant_pricing.sql`, se regeneraron los tipos oficiales y se verificaron remotamente RLS, historial, aislamiento por business y la RPC atómica de actualización masiva de precios.
+
 ## Riesgos
 
 - Diseñar prematuramente el modelo de producto, variantes o inventario puede cerrar decisiones de negocio aún abiertas.

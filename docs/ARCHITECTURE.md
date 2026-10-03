@@ -18,6 +18,13 @@ Los comandos efectivamente verificados se registran en `CURRENT_STATE.md`.
 - Las cinco tablas habilitan RLS: una membresía activa permite lectura; sólo `owner` y `admin` activos pueden insertar, actualizar o eliminar. La función `has_active_business_role` usa `SECURITY DEFINER` para no introducir recursión sobre `business_memberships`.
 - `packages/database/src/generated.ts` se regeneró desde ese esquema remoto.
 
+## Pricing aplicado y verificado remotamente
+
+- La migration `20261003010000_variant_pricing.sql` creó `variant_prices` y `variant_costs` separados, ambos con una fila actual opcional por variante y montos `bigint` en centavos. Sus tablas de historial se alimentan mediante triggers append-only que registran alta, cambios y limpieza del importe.
+- RLS permite leer precio de venta a una membresía activa; costos e historiales sólo pueden leerlos owner/admin. Sólo owner/admin puede modificar precios o costos.
+- La RPC `adjust_variant_prices` valida ownership y rol en PostgreSQL y actualiza toda la selección en una sola sentencia; rechaza variantes de otro business o sin precio antes de escribir.
+- Los tipos de `packages/database/src/generated.ts` fueron regenerados oficialmente desde el esquema remoto aplicado.
+
 ## Propuesto / futuro
 
 - Supabase Storage cuando exista una necesidad concreta de archivos.

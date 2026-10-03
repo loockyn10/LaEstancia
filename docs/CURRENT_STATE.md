@@ -14,12 +14,14 @@
 - Tooling de build, chequeo de tipos y lint configurado.
 - UX administrativa de catálogo: productos, marcas y categorías; altas y edición de productos, presentaciones y códigos de barras; filtros y búsqueda local del catálogo cargado del business.
 - El backoffice refleja roles: `owner` y `admin` pueden modificar el catálogo; `staff` cuenta sólo con vistas de consulta. La autoridad efectiva sigue siendo RLS.
+- Migration `supabase/migrations/20261003010000_variant_pricing.sql` aplicada para precios, costos, sus historiales por trigger, RLS y actualización masiva atómica de precios. La sección Precios del backoffice permite gestionar importes por presentación y oculta costos/márgenes a staff.
 
 ## Aplicado remotamente
 
 - Repositorio enlazado al proyecto Supabase `caegoufmwmuckuskkzjs` (`laestancia Project`, región `sa-east-1`).
 - Aplicada mediante `supabase db push --linked` la migration `20261001000000_foundation_auth_business_rls.sql`.
 - Aplicada mediante `supabase db push --linked` la migration `20261003000000_catalog_foundation.sql`; el dry-run previo mostró únicamente esa migration, sin seeds, roles ni cambios adicionales.
+- Aplicada mediante `supabase db push --linked` la migration `20261003010000_variant_pricing.sql`; el dry-run previo mostró únicamente esa migration, sin seeds, roles ni cambios adicionales.
 
 ## Verificado remotamente
 
@@ -34,6 +36,9 @@
 - SKU y barcode duplicados dentro de A fueron rechazados por sus índices únicos. Las referencias entre Product→Brand, ProductVariant→Product y ProductBarcode→ProductVariant de businesses distintos fueron rechazadas por las foreign keys compuestas.
 - Se crearon dos businesses y cuatro usuarios de prueba aislados, identificados como `sprint2-rls-test`, y se eliminaron completamente después de la verificación.
 - Los tipos oficiales se regeneraron desde el esquema remoto aplicado en `packages/database/src/generated.ts`.
+- Se verificaron remotamente precios, costos, RLS e historial con cuatro usuarios y dos businesses aislados dentro de una transacción revertida: owner/admin pudieron leer y modificar, staff sólo leyó precio y no pudo modificar ni acceder a costos; el aislamiento entre businesses se mantuvo.
+- La RPC `adjust_variant_prices` funcionó para owner/admin, rechazó staff, rechazó selecciones de otro business o sin precio, y esos fallos no modificaron ningún precio. Los triggers preservaron los eventos iniciales y posteriores de precio/costo.
+- Los tipos oficiales se regeneraron desde el esquema remoto con las tablas y RPC de pricing en `packages/database/src/generated.ts`.
 
 ## Verificado localmente
 
@@ -51,6 +56,6 @@ Supabase CLI se ejecuta temporalmente mediante `pnpm dlx supabase`. No se usó D
 
 Definir el flujo administrativo para altas y gestión de usuarios reales y memberships en un sprint posterior. La migration no incluye policies de escritura de cliente.
 
-Stock, precios, etiquetas, proveedores, compras, POS, ventas, clientes y ecommerce permanecen fuera de esta fundación.
+Stock, etiquetas, proveedores, compras, POS, ventas, clientes y ecommerce permanecen fuera de este alcance.
 
 El versionado y la aplicación remota se registran por separado en las secciones anteriores.
