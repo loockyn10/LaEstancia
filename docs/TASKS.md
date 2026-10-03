@@ -2,7 +2,8 @@
 
 ## Pendientes reales
 
-- Decidir la política de naming y branding comercial.
+- Definir la política de naming y branding comercial, incluida la provisión del logo limpio definitivo.
+- Evaluar una constraint de unicidad normalizada para nombres de marcas y categorías antes de depender de esa regla en integraciones o escrituras concurrentes.
 
 ## Resuelto — Sprint 1
 

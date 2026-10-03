@@ -16,6 +16,13 @@ Stock y precios serán capacidades centrales. La UX debe priorizar simplicidad p
 - El SKU pertenece a la variante y, cuando existe, es único dentro del business. Un barcode es texto, pertenece a una variante y no se repite dentro de su business. Una variante puede tener varios barcodes y, como máximo, uno primario.
 - Precio, costo, stock, unidades y lógica de alimento fraccionado no forman parte de esta fundación.
 
+## UX administrativa del catálogo
+
+- La navegación inicial del backoffice se limita a Productos, Marcas y Categorías.
+- La operación usa el término “Presentación” para `ProductVariant`. Un producto simple se crea con una presentación predeterminada.
+- La búsqueda de productos cubre nombre del producto, SKU de la presentación y código de barras. Marcas y categorías se administran como listas planas activables.
+- `staff` consulta el catálogo; `owner` y `admin` pueden crear y editar. Esta distinción mejora la UX, pero RLS permanece como autoridad de acceso.
+
 ## Decisiones pendientes
 
 - Fraccionamiento.

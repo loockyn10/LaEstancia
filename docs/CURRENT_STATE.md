@@ -12,6 +12,8 @@
 - Tipos TypeScript generados desde el esquema remoto en `packages/database/src/generated.ts`; `@pet-shop/database` los reexporta.
 - Documentación multi-agente.
 - Tooling de build, chequeo de tipos y lint configurado.
+- UX administrativa de catálogo: productos, marcas y categorías; altas y edición de productos, presentaciones y códigos de barras; filtros y búsqueda local del catálogo cargado del business.
+- El backoffice refleja roles: `owner` y `admin` pueden modificar el catálogo; `staff` cuenta sólo con vistas de consulta. La autoridad efectiva sigue siendo RLS.
 
 ## Aplicado remotamente
 
