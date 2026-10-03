@@ -39,3 +39,19 @@
 **Motivo:** mantener el alcance inicial acotado.
 
 **Consecuencias:** la arquitectura no debe anticipar complejidad de sincronización sin una necesidad validada.
+
+## D006 — Business como límite de ownership
+
+**Decisión:** los datos de negocio pertenecen a `businesses`; las sucursales pertenecen siempre a un negocio.
+
+**Motivo:** preparar el aislamiento de datos sin convertir la UX inicial en una plataforma multiempresa.
+
+**Consecuencias:** las capacidades comerciales futuras deberán referenciar su `business_id` y, cuando corresponda, `branch_id`.
+
+## D007 — Membresía activa como autoridad de acceso
+
+**Decisión:** `business_memberships` relaciona usuario de Auth, negocio, rol y estado activo; no se usan perfiles como autoridad de permisos.
+
+**Motivo:** una membresía puede otorgar o revocar acceso sin alterar la identidad del usuario.
+
+**Consecuencias:** RLS valida la membresía activa y los roles iniciales son `owner`, `admin` y `staff`. La administración de escrituras no forma parte de esta fundación.
