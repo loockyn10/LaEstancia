@@ -17,6 +17,8 @@
 - Migration `supabase/migrations/20261003010000_variant_pricing.sql` aplicada para precios, costos, sus historiales por trigger, RLS y actualización masiva atómica de precios. La sección Precios del backoffice permite gestionar importes por presentación y oculta costos/márgenes a staff.
 - Migration `supabase/migrations/20261004000000_variant_offers.sql` aplicada para ofertas simples por presentación, RLS y el view de precio efectivo. Precios suma la gestión de ofertas y Etiquetas ofrece selección múltiple, cantidades, preview y print CSS.
 - `packages/database/src/generated.ts` fue regenerado oficialmente desde el esquema remoto después de aplicar Sprint 5.
+- Migration `supabase/migrations/20261004010000_inventory.sql` aplicada para balances por presentación/sucursal, movimientos append-only, RPC atómica, stock mínimo y RLS. La sección Stock permite filtrar por nombre/SKU/barcode, sucursal y estado; registrar entrada, salida o ajuste con preview; configurar mínimo; y consultar historial.
+- `packages/database/src/generated.ts` fue regenerado oficialmente desde el esquema remoto después de aplicar Sprint 6.
 
 ## Aplicado remotamente
 
@@ -25,6 +27,7 @@
 - Aplicada mediante `supabase db push --linked` la migration `20261003000000_catalog_foundation.sql`; el dry-run previo mostró únicamente esa migration, sin seeds, roles ni cambios adicionales.
 - Aplicada mediante `supabase db push --linked` la migration `20261003010000_variant_pricing.sql`; el dry-run previo mostró únicamente esa migration, sin seeds, roles ni cambios adicionales.
 - Aplicada mediante `supabase db push --linked` la migration `20261004000000_variant_offers.sql`; el dry-run previo mostró únicamente esa migration, sin seeds, roles ni cambios adicionales.
+- Aplicada mediante `supabase db push --linked` la migration `20261004010000_inventory.sql`; el dry-run previo mostró únicamente esa migration, sin seeds, roles ni cambios adicionales.
 
 ## Verificado remotamente
 
@@ -44,6 +47,9 @@
 - Los tipos oficiales se regeneraron desde el esquema remoto con las tablas y RPC de pricing en `packages/database/src/generated.ts`.
 - Se verificaron remotamente `variant_offers`, RLS, la constraint de solapamientos y `variant_effective_prices` con dos businesses y tres usuarios aislados dentro de una transacción revertida: owner/admin crearon y editaron; staff leyó sin poder modificar; no hubo acceso cruzado; las ofertas futuras, vencidas o desactivadas devolvieron el precio base, y una vigente devolvió el promocional. No quedó ningún dato de prueba.
 - Los tipos oficiales se regeneraron desde el esquema remoto con Sprint 5 en `packages/database/src/generated.ts`.
+- Con datos aislados `sprint6-*`, owner registró un saldo inicial de 10; admin registró una salida de 2; un ajuste físico a 5 dejó delta -3 y saldo resultante 5; el mínimo 5 quedó persistido. Cada saldo resultante coincidió con el movimiento registrado.
+- Se verificaron remotamente el rechazo de salida que dejaría stock negativo; lectura para staff; rechazo de movimiento y mínimo para staff; aislamiento de Business B; rechazo de variant de otro business; y ausencia de permisos de cliente para editar o borrar movimientos. Los datos de prueba se eliminaron y se confirmó que no quedaron businesses `sprint6-*`.
+- La RPC usa creación idempotente de balance seguida de `SELECT ... FOR UPDATE`, por lo que las operaciones concurrentes se serializan sobre el mismo balance. La carrera remota de dos conexiones queda pendiente de una sesión SQL adicional: el lanzador aislado no pudo abrir una segunda conexión y `dblink` exige credenciales no disponibles. No se afirma como verificación remota completada.
 
 ## Verificado localmente
 
@@ -61,6 +67,6 @@ Supabase CLI se ejecuta temporalmente mediante `pnpm dlx supabase`. No se usó D
 
 Definir el flujo administrativo para altas y gestión de usuarios reales y memberships en un sprint posterior. La migration no incluye policies de escritura de cliente.
 
-Stock, proveedores, compras, POS, ventas, clientes y ecommerce permanecen fuera de este alcance.
+Proveedores, compras, POS, ventas, clientes y ecommerce permanecen fuera de este alcance.
 
 El versionado y la aplicación remota se registran por separado en las secciones anteriores.

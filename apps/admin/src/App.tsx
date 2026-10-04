@@ -53,6 +53,29 @@ type Product = {
   variants: Variant[];
 };
 type ProductDraft = Omit<Product, "id">;
+type Branch = { id: string; name: string; is_active: boolean };
+type InventoryMovementType = "initial" | "inbound" | "outbound" | "adjustment";
+type InventoryRow = {
+  branchId: string;
+  branchName: string;
+  variantId: string;
+  productName: string;
+  variantName: string;
+  sku: string;
+  barcode: string;
+  quantity: number;
+  minimumQuantity: number | null;
+};
+type InventoryHistoryItem = {
+  id: string;
+  type: InventoryMovementType;
+  quantity_delta: number;
+  resulting_quantity: number;
+  note: string | null;
+  created_at: string;
+  created_by: string;
+  created_by_name: string | null;
+};
 
 const loginPath = "/login";
 const blankVariant = (): Variant => ({
@@ -104,6 +127,12 @@ function humanError(error: PostgrestError | null) {
     return "Esta vigencia se superpone con otra oferta activa de la misma presentación.";
   if (message.includes("ends_at") || message.includes("check constraint"))
     return "La fecha de fin debe ser posterior a la fecha de inicio.";
+  if (message.includes("insufficient inventory")) return "Stock insuficiente.";
+  if (message.includes("invalid inventory quantity") || message.includes("quantity must be greater"))
+    return "Cantidad inválida.";
+  if (message.includes("invalid inventory branch") || message.includes("invalid inventory variant"))
+    return "Producto/sucursal inválidos.";
+  if (message.includes("not authorized")) return "No tenés permisos para realizar esta acción.";
   if (
     message.includes("row-level security") ||
     message.includes("permission denied")
@@ -163,6 +192,39 @@ function parsePercent(value: string): number | null {
   if (!/^-?\d+(?:\.\d+)?$/.test(raw)) return null;
   const parsed = Number(raw);
   return Number.isFinite(parsed) && parsed >= -100 ? parsed : null;
+}
+const quantityScale = 1000n;
+function parseQuantity(value: string): bigint | null {
+  const normalized = value.trim().replace(/\s/g, "").replace(",", ".");
+  const match = normalized.match(/^(\d+)(?:\.(\d{1,3}))?$/);
+  if (!match) return null;
+  const [, whole, fraction = ""] = match;
+  return BigInt(whole) * quantityScale + BigInt(fraction.padEnd(3, "0"));
+}
+function quantityFromDatabase(value: number) {
+  const raw = String(value);
+  const negative = raw.startsWith("-");
+  const parsed = parseQuantity(negative ? raw.slice(1) : raw);
+  return parsed === null ? 0n : negative ? -parsed : parsed;
+}
+function formatQuantity(quantity: bigint | number | null | undefined) {
+  if (quantity === null || quantity === undefined) return "—";
+  const scaled = typeof quantity === "bigint" ? quantity : quantityFromDatabase(quantity);
+  const negative = scaled < 0n;
+  const absolute = negative ? -scaled : scaled;
+  const whole = absolute / quantityScale;
+  const fraction = (absolute % quantityScale).toString().padStart(3, "0").replace(/0+$/, "");
+  return `${negative ? "-" : ""}${whole.toLocaleString("es-AR")}${fraction ? `,${fraction}` : ""}`;
+}
+function quantityInput(quantity: number | null | undefined) {
+  return quantity === null || quantity === undefined ? "" : formatQuantity(quantity).replace(/\./g, "");
+}
+function movementLabel(type: InventoryMovementType) {
+  return type === "inbound" || type === "initial"
+    ? "Entrada"
+    : type === "outbound"
+      ? "Salida"
+      : "Ajuste";
 }
 function Loading({ message }: { message: string }) {
   return (
@@ -301,6 +363,7 @@ function Sidebar({
         <nav>
           {item("/", "Productos")}
           {item("/prices", "Precios")}
+          {item("/stock", "Stock")}
           {item("/labels", "Etiquetas")}
           {item("/brands", "Marcas")}
           {item("/categories", "Categorías")}
@@ -457,6 +520,15 @@ function Catalog({
   else if (path === "/prices")
     page = (
       <Pricing
+        businessId={businessId}
+        canEdit={canEdit}
+        products={products}
+        role={role}
+      />
+    );
+  else if (path === "/stock")
+    page = (
+      <Stock
         businessId={businessId}
         canEdit={canEdit}
         products={products}
@@ -657,6 +729,203 @@ function Products({
       )}
     </>
   );
+}
+
+function Stock({
+  businessId,
+  canEdit,
+  products,
+  role,
+}: {
+  businessId: string;
+  canEdit: boolean;
+  products: Product[];
+  role: Role;
+}) {
+  const [branches, setBranches] = useState<Branch[]>([]);
+  const [balances, setBalances] = useState<Record<string, { quantity: number; minimumQuantity: number | null }>>({});
+  const [branchFilter, setBranchFilter] = useState("");
+  const [query, setQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [movementTarget, setMovementTarget] = useState<InventoryRow | null>(null);
+  const [movementType, setMovementType] = useState<InventoryMovementType>("inbound");
+  const [movementInput, setMovementInput] = useState("");
+  const [movementNote, setMovementNote] = useState("");
+  const [movementSaving, setMovementSaving] = useState(false);
+  const [minimumTarget, setMinimumTarget] = useState<InventoryRow | null>(null);
+  const [minimumInput, setMinimumInput] = useState("");
+  const [minimumSaving, setMinimumSaving] = useState(false);
+  const [historyTarget, setHistoryTarget] = useState<InventoryRow | null>(null);
+  const [history, setHistory] = useState<InventoryHistoryItem[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+
+  const load = useCallback(async () => {
+    const supabase = getSupabaseClient();
+    if (!supabase) return;
+    setLoading(true);
+    setError(null);
+    const [branchResult, balanceResult] = await Promise.all([
+      supabase.from("branches").select("id,name,is_active").eq("business_id", businessId).order("name"),
+      supabase.from("inventory_balances").select("branch_id,variant_id,quantity,minimum_quantity").eq("business_id", businessId),
+    ]);
+    const failure = branchResult.error ?? balanceResult.error;
+    if (failure) {
+      setError(humanError(failure));
+      setLoading(false);
+      return;
+    }
+    const nextBranches = branchResult.data ?? [];
+    setBranches(nextBranches);
+    setBranchFilter((current) => current || nextBranches.find((branch) => branch.is_active)?.id || nextBranches[0]?.id || "");
+    setBalances(Object.fromEntries((balanceResult.data ?? []).map((balance) => [
+      `${balance.branch_id}:${balance.variant_id}`,
+      { quantity: balance.quantity, minimumQuantity: balance.minimum_quantity },
+    ])));
+    setLoading(false);
+  }, [businessId]);
+  useEffect(() => { void load(); }, [load]);
+
+  const rows = useMemo<InventoryRow[]>(() => {
+    const visibleBranches = branchFilter ? branches.filter((branch) => branch.id === branchFilter) : branches;
+    return visibleBranches.flatMap((branch) => products.flatMap((product) => product.variants
+      .filter((variant): variant is Variant & { id: string } => Boolean(variant.id))
+      .map((variant) => {
+        const balance = balances[`${branch.id}:${variant.id}`];
+        return {
+          branchId: branch.id,
+          branchName: branch.name,
+          variantId: variant.id,
+          productName: product.name,
+          variantName: variant.name,
+          sku: variant.sku,
+          barcode: variant.barcodes.find((barcode) => barcode.is_primary)?.code ?? variant.barcodes[0]?.code ?? "",
+          quantity: balance?.quantity ?? 0,
+          minimumQuantity: balance?.minimumQuantity ?? null,
+        };
+      })));
+  }, [balances, branchFilter, branches, products]);
+  const stockStatus = (row: InventoryRow) => {
+    if (quantityFromDatabase(row.quantity) === 0n) return "out";
+    if (row.minimumQuantity !== null && quantityFromDatabase(row.quantity) <= quantityFromDatabase(row.minimumQuantity)) return "low";
+    return "ok";
+  };
+  const filtered = useMemo(() => {
+    const search = query.trim().toLocaleLowerCase("es-AR");
+    return rows.filter((row) => (
+      (statusFilter === "all" || stockStatus(row) === statusFilter) &&
+      (!search || [row.productName, row.variantName, row.sku, row.barcode].some((value) => value.toLocaleLowerCase("es-AR").includes(search)))
+    ));
+  }, [query, rows, statusFilter]);
+  const movementQuantity = parseQuantity(movementInput);
+  const movementPreview = useMemo(() => {
+    if (!movementTarget || movementQuantity === null) return null;
+    const current = quantityFromDatabase(movementTarget.quantity);
+    const next = movementType === "adjustment"
+      ? movementQuantity
+      : movementType === "outbound"
+        ? current - movementQuantity
+        : current + movementQuantity;
+    return { current, delta: next - current, next };
+  }, [movementQuantity, movementTarget, movementType]);
+
+  function startMovement(row: InventoryRow) {
+    setMovementTarget(row);
+    setMovementType("inbound");
+    setMovementInput("");
+    setMovementNote("");
+    setError(null);
+    setNotice(null);
+  }
+  async function saveMovement(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!movementTarget || !canEdit || movementQuantity === null || !movementPreview) {
+      setError("Cantidad inválida.");
+      return;
+    }
+    if ((movementType !== "adjustment" && movementQuantity === 0n) || movementPreview.next < 0n || movementPreview.delta === 0n) {
+      setError(movementPreview.next < 0n ? "Stock insuficiente." : "Cantidad inválida.");
+      return;
+    }
+    const supabase = getSupabaseClient();
+    if (!supabase) return;
+    setMovementSaving(true);
+    setError(null);
+    const { error: saveError } = await supabase.rpc("record_inventory_movement", {
+      target_business_id: businessId,
+      target_branch_id: movementTarget.branchId,
+      target_variant_id: movementTarget.variantId,
+      movement_type: movementType,
+      movement_quantity: Number(movementQuantity) / Number(quantityScale),
+      movement_note: movementNote.trim() || undefined,
+    });
+    setMovementSaving(false);
+    if (saveError) return setError(humanError(saveError));
+    setMovementTarget(null);
+    setNotice("El movimiento se registró correctamente.");
+    await load();
+  }
+  function startMinimum(row: InventoryRow) {
+    setMinimumTarget(row);
+    setMinimumInput(quantityInput(row.minimumQuantity));
+    setError(null);
+    setNotice(null);
+  }
+  async function saveMinimum(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!minimumTarget || !canEdit) return;
+    const minimum = minimumInput.trim() ? parseQuantity(minimumInput) : null;
+    if (minimumInput.trim() && minimum === null) {
+      setError("Cantidad inválida.");
+      return;
+    }
+    const supabase = getSupabaseClient();
+    if (!supabase) return;
+    setMinimumSaving(true);
+    setError(null);
+    const minimumParams = {
+      target_business_id: businessId,
+      target_branch_id: minimumTarget.branchId,
+      target_variant_id: minimumTarget.variantId,
+      ...(minimum === null ? {} : { target_minimum_quantity: Number(minimum) / Number(quantityScale) }),
+    };
+    const { error: saveError } = await supabase.rpc("set_inventory_minimum", minimumParams);
+    setMinimumSaving(false);
+    if (saveError) return setError(humanError(saveError));
+    setMinimumTarget(null);
+    setNotice("El stock mínimo se guardó correctamente.");
+    await load();
+  }
+  async function openHistory(row: InventoryRow) {
+    const supabase = getSupabaseClient();
+    if (!supabase) return;
+    setHistoryTarget(row);
+    setHistory([]);
+    setHistoryLoading(true);
+    setError(null);
+    const { data, error: historyError } = await supabase.rpc("list_inventory_movements", {
+      target_business_id: businessId,
+      target_branch_id: row.branchId,
+      target_variant_id: row.variantId,
+    });
+    setHistoryLoading(false);
+    if (historyError) return setError(humanError(historyError));
+    setHistory(data ?? []);
+  }
+  const statusText = (row: InventoryRow) => stockStatus(row) === "out" ? "Sin stock" : stockStatus(row) === "low" ? "Bajo" : "OK";
+
+  return <>
+    <header className="page-header"><div><p className="eyebrow">Inventario</p><h1>Stock</h1><p className="subtle">El stock se controla por presentación y sucursal. {role === "staff" ? "Podés consultarlo, pero no registrar movimientos." : "Registrá entradas, salidas y ajustes con trazabilidad."}</p></div></header>
+    {notice && <p className="notice" role="status">{notice}</p>}
+    {error && <p className="form-error" role="alert">{error}</p>}
+    <section className="filters"><input aria-label="Buscar stock" onChange={(event) => setQuery(event.target.value)} placeholder="Buscar por nombre, SKU o código" type="search" value={query} /><select aria-label="Sucursal" onChange={(event) => setBranchFilter(event.target.value)} value={branchFilter}><option value="">Todas las sucursales</option>{branches.map((branch) => <option key={branch.id} value={branch.id}>{branch.name}{branch.is_active ? "" : " (inactiva)"}</option>)}</select><select aria-label="Estado de stock" onChange={(event) => setStatusFilter(event.target.value)} value={statusFilter}><option value="all">Todos los estados</option><option value="ok">OK</option><option value="low">Stock bajo</option><option value="out">Sin stock</option></select></section>
+    {loading ? <StateBox title="Cargando stock…" /> : !branches.length ? <StateBox title="No hay sucursales disponibles" text="Cuando exista una sucursal, el stock se podrá consultar por presentación." /> : !filtered.length ? <StateBox title="No encontramos stock" text={rows.length ? "Probá con otra búsqueda o filtro." : "Cuando cargues productos con presentaciones, van a aparecer acá."} /> : <div className="table-wrap"><table><thead><tr><th>Producto</th><th>Presentación</th><th>SKU</th><th>Sucursal</th><th>Stock actual</th><th>Stock mínimo</th><th>Estado</th><th /></tr></thead><tbody>{filtered.map((row) => <tr key={`${row.branchId}:${row.variantId}`}><td><strong>{row.productName}</strong></td><td>{row.variantName}</td><td>{row.sku || "—"}</td><td>{row.branchName}</td><td><strong>{formatQuantity(row.quantity)}</strong></td><td>{row.minimumQuantity === null ? "Sin definir" : formatQuantity(row.minimumQuantity)}</td><td><span className={`stock-status ${stockStatus(row)}`}>{statusText(row)}</span></td><td><div className="actions">{canEdit && <><button className="link-button" onClick={() => startMovement(row)} type="button">Movimiento</button><button className="link-button" onClick={() => startMinimum(row)} type="button">Mínimo</button></>}<button className="link-button" onClick={() => void openHistory(row)} type="button">Historial</button></div></td></tr>)}</tbody></table></div>}
+    {movementTarget && <div className="modal-backdrop" role="presentation"><section aria-modal="true" className="modal" role="dialog"><header className="section-header"><div><h2>Registrar movimiento</h2><p>{movementTarget.productName} · {movementTarget.variantName} · {movementTarget.branchName}</p></div><button className="secondary compact" disabled={movementSaving} onClick={() => setMovementTarget(null)} type="button">Cerrar</button></header><form className="grid" onSubmit={(event) => void saveMovement(event)}><label>Tipo<select onChange={(event) => setMovementType(event.target.value as InventoryMovementType)} value={movementType}><option value="inbound">Entrada</option><option value="outbound">Salida</option><option value="adjustment">Ajuste</option></select></label><label>{movementType === "adjustment" ? "Cantidad física real" : "Cantidad"}<input autoFocus inputMode="decimal" onChange={(event) => setMovementInput(event.target.value)} placeholder="Ej. 2 o 1,250" required value={movementInput} /></label><label className="wide">Motivo o nota (opcional)<textarea maxLength={2000} onChange={(event) => setMovementNote(event.target.value)} value={movementNote} /></label>{movementPreview && <p className={`stock-preview wide ${movementPreview.next < 0n ? "invalid" : ""}`}>Stock actual: <strong>{formatQuantity(movementPreview.current)}</strong> · Movimiento: <strong>{movementPreview.delta > 0n ? "+" : ""}{formatQuantity(movementPreview.delta)}</strong> · Nuevo stock: <strong>{formatQuantity(movementPreview.next)}</strong>{movementPreview.next < 0n && " — Stock insuficiente"}</p>}<p className="muted wide">El ajuste registra la cantidad física final y calcula automáticamente su diferencia.</p><div className="form-actions wide"><button disabled={movementSaving || !movementPreview || movementPreview.next < 0n || movementPreview.delta === 0n} type="submit">{movementSaving ? "Guardando…" : "Confirmar movimiento"}</button><button className="secondary" disabled={movementSaving} onClick={() => setMovementTarget(null)} type="button">Cancelar</button></div></form></section></div>}
+    {minimumTarget && <div className="modal-backdrop" role="presentation"><section aria-modal="true" className="modal" role="dialog"><header className="section-header"><div><h2>Stock mínimo</h2><p>{minimumTarget.productName} · {minimumTarget.variantName} · {minimumTarget.branchName}</p></div><button className="secondary compact" disabled={minimumSaving} onClick={() => setMinimumTarget(null)} type="button">Cerrar</button></header><form className="grid" onSubmit={(event) => void saveMinimum(event)}><label>Stock mínimo opcional<input autoFocus inputMode="decimal" onChange={(event) => setMinimumInput(event.target.value)} placeholder="Ej. 3 o 1,500" value={minimumInput} /></label><p className="muted wide">Dejá el campo vacío para no marcar esta presentación como stock bajo.</p><div className="form-actions wide"><button disabled={minimumSaving} type="submit">{minimumSaving ? "Guardando…" : "Guardar mínimo"}</button><button className="secondary" disabled={minimumSaving} onClick={() => setMinimumTarget(null)} type="button">Cancelar</button></div></form></section></div>}
+    {historyTarget && <div className="modal-backdrop" role="presentation"><section aria-modal="true" className="modal history-modal" role="dialog"><header className="section-header"><div><h2>Historial de movimientos</h2><p>{historyTarget.productName} · {historyTarget.variantName} · {historyTarget.branchName}</p></div><button className="secondary compact" onClick={() => setHistoryTarget(null)} type="button">Cerrar</button></header>{historyLoading ? <p className="muted">Cargando historial…</p> : !history.length ? <p className="muted">Todavía no hay movimientos registrados.</p> : <div className="table-wrap"><table><thead><tr><th>Fecha</th><th>Tipo</th><th>Cantidad</th><th>Stock resultante</th><th>Usuario</th><th>Nota</th></tr></thead><tbody>{history.map((item) => <tr key={item.id}><td>{new Intl.DateTimeFormat("es-AR", { dateStyle: "short", timeStyle: "short" }).format(new Date(item.created_at))}</td><td>{movementLabel(item.type)}</td><td>{item.quantity_delta > 0 ? "+" : ""}{formatQuantity(item.quantity_delta)}</td><td>{formatQuantity(item.resulting_quantity)}</td><td>{item.created_by_name || "Usuario registrado"}</td><td>{item.note || "—"}</td></tr>)}</tbody></table></div>}</section></div>}
+  </>;
 }
 
 type PricingRow = {

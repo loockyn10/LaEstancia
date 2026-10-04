@@ -163,6 +163,112 @@ export type Database = {
           },
         ]
       }
+      inventory_balances: {
+        Row: {
+          branch_id: string
+          business_id: string
+          created_at: string
+          minimum_quantity: number | null
+          quantity: number
+          updated_at: string
+          variant_id: string
+        }
+        Insert: {
+          branch_id: string
+          business_id: string
+          created_at?: string
+          minimum_quantity?: number | null
+          quantity?: number
+          updated_at?: string
+          variant_id: string
+        }
+        Update: {
+          branch_id?: string
+          business_id?: string
+          created_at?: string
+          minimum_quantity?: number | null
+          quantity?: number
+          updated_at?: string
+          variant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "inventory_balances_branch_id_business_id_fkey"
+            columns: ["branch_id", "business_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id", "business_id"]
+          },
+          {
+            foreignKeyName: "inventory_balances_variant_id_business_id_fkey"
+            columns: ["variant_id", "business_id"]
+            isOneToOne: false
+            referencedRelation: "product_variants"
+            referencedColumns: ["id", "business_id"]
+          },
+        ]
+      }
+      inventory_movements: {
+        Row: {
+          branch_id: string
+          business_id: string
+          created_at: string
+          created_by: string
+          id: string
+          note: string | null
+          quantity_delta: number
+          resulting_quantity: number
+          type: Database["public"]["Enums"]["inventory_movement_type"]
+          variant_id: string
+        }
+        Insert: {
+          branch_id: string
+          business_id: string
+          created_at?: string
+          created_by: string
+          id?: string
+          note?: string | null
+          quantity_delta: number
+          resulting_quantity: number
+          type: Database["public"]["Enums"]["inventory_movement_type"]
+          variant_id: string
+        }
+        Update: {
+          branch_id?: string
+          business_id?: string
+          created_at?: string
+          created_by?: string
+          id?: string
+          note?: string | null
+          quantity_delta?: number
+          resulting_quantity?: number
+          type?: Database["public"]["Enums"]["inventory_movement_type"]
+          variant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "inventory_movements_branch_id_business_id_fkey"
+            columns: ["branch_id", "business_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id", "business_id"]
+          },
+          {
+            foreignKeyName: "inventory_movements_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inventory_movements_variant_id_business_id_fkey"
+            columns: ["variant_id", "business_id"]
+            isOneToOne: false
+            referencedRelation: "product_variants"
+            referencedColumns: ["id", "business_id"]
+          },
+        ]
+      }
       product_barcodes: {
         Row: {
           business_id: string
@@ -559,9 +665,54 @@ export type Database = {
         }
         Returns: boolean
       }
+      list_inventory_movements: {
+        Args: {
+          target_branch_id: string
+          target_business_id: string
+          target_variant_id: string
+        }
+        Returns: {
+          created_at: string
+          created_by: string
+          created_by_name: string
+          id: string
+          note: string
+          quantity_delta: number
+          resulting_quantity: number
+          type: Database["public"]["Enums"]["inventory_movement_type"]
+        }[]
+      }
+      record_inventory_movement: {
+        Args: {
+          movement_note?: string
+          movement_quantity: number
+          movement_type: Database["public"]["Enums"]["inventory_movement_type"]
+          target_branch_id: string
+          target_business_id: string
+          target_variant_id: string
+        }
+        Returns: {
+          movement_id: string
+          quantity_delta: number
+          resulting_quantity: number
+        }[]
+      }
+      set_inventory_minimum: {
+        Args: {
+          target_branch_id: string
+          target_business_id: string
+          target_minimum_quantity?: number
+          target_variant_id: string
+        }
+        Returns: {
+          minimum_quantity: number
+          quantity: number
+        }[]
+      }
     }
     Enums: {
       business_role: "owner" | "admin" | "staff"
+      inventory_movement_type: "initial" | "inbound" | "outbound" | "adjustment"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -690,6 +841,7 @@ export const Constants = {
   public: {
     Enums: {
       business_role: ["owner", "admin", "staff"],
+      inventory_movement_type: ["initial", "inbound", "outbound", "adjustment"],
     },
   },
 } as const

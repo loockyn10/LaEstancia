@@ -27,11 +27,13 @@ Stock y precios serán capacidades centrales. La UX debe priorizar simplicidad p
 - La sección Precios permite editar importes por presentación, revisar el historial de precio y costo para owner/admin, y ajustar en forma masiva sólo precios de venta mediante un porcentaje con vista previa y confirmación.
 - Una presentación puede tener ofertas simples de precio promocional, independientes del precio base. Una oferta sólo aplica si está activa y dentro de su vigencia; no se contemplan aún 2x1, combos ni descuentos por cantidad.
 - La sección Etiquetas permite seleccionar presentaciones y cantidades de copias para imprimir etiquetas chicas, etiquetas de góndola y carteles de oferta desde la vista previa del navegador. Usa el barcode principal existente cuando está disponible, sin inventar códigos.
+- Stock pertenece a cada combinación de presentación y sucursal. Las cantidades admiten hasta tres decimales para productos futuros vendidos por peso, aunque la UX actual no incorpora todavía el flujo completo de fraccionados.
+- Owner y admin pueden registrar entradas, salidas y ajustes manuales; staff sólo consulta. Un ajuste siempre expresa la cantidad física final, y el historial conserva el delta y el saldo resultante.
+- El mínimo de stock es opcional por presentación/sucursal. Cero es “Sin stock”; un saldo positivo menor o igual al mínimo es “Bajo”; sin mínimo no se genera alerta de bajo stock.
 
 ## Decisiones pendientes
 
 - Fraccionamiento.
-- Estructura final de inventario.
 - Alcance y diseño del POS.
 - Alcance y framework del ecommerce público.
 - Modelo de proveedores.

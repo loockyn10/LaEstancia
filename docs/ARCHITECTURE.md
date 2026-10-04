@@ -31,6 +31,12 @@ Los comandos efectivamente verificados se registran en `CURRENT_STATE.md`.
 - El view `variant_effective_prices` centraliza el precio efectivo: toma una oferta activa y vigente, o el precio base si no existe. El view usa `security_invoker`, de modo que las RLS de precios y ofertas se siguen aplicando al usuario que consulta.
 - `variant_offers` permite lectura a cualquier membresía activa y escritura sólo a owner/admin; las políticas y el constraint son la autoridad, no la UI. La migration fue aplicada al proyecto remoto enlazado y sus políticas, la view y las vigencias se verificaron con datos transaccionales revertidos.
 
+## Inventario aplicado y verificado remotamente
+
+- La migration `20261004010000_inventory.sql` creó `inventory_balances` por `product_variant` y `branch`, e `inventory_movements` append-only. Las cantidades son `numeric(18,3)`; `products` no tienen una columna de stock y no son fuente de verdad.
+- `record_inventory_movement` es una RPC `SECURITY DEFINER`: valida miembro, rol owner/admin, business, branch y variant; crea el balance en cero si falta, bloquea la fila con `FOR UPDATE`, calcula el nuevo saldo, rechaza negativos, actualiza el balance e inserta el movimiento en una única transacción.
+- Las tablas sólo otorgan `SELECT` al cliente bajo RLS por business. Los movimientos no tienen permisos de `INSERT`, `UPDATE` ni `DELETE` para `authenticated`; las escrituras ocurren únicamente por RPC. `set_inventory_minimum` protege el mínimo con la misma validación y `list_inventory_movements` entrega el nombre del autor sin abrir las filas de `profiles`.
+
 ## Propuesto / futuro
 
 - Supabase Storage cuando exista una necesidad concreta de archivos.

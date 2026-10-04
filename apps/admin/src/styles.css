@@ -94,6 +94,11 @@
 .offer-status { display: inline-block; padding: .25rem .55rem; border-radius: 999px; background: #e9f4e8; color: #267048; font-size: .76rem; font-weight: 750; }
 .offer-status.proxima { background: #e7eff7; color: #25587a; }
 .offer-status.vencida, .offer-status.desactivada { background: #f0f1f1; color: #657177; }
+.stock-status { display: inline-block; border-radius: 999px; padding: .25rem .55rem; background: #e9f4e8; color: #267048; font-size: .76rem; font-weight: 750; }
+.stock-status.low { background: #fff1cf; color: #8a5b00; }
+.stock-status.out { background: #fce8e6; color: #b42318; }
+.stock-preview { margin: 0; padding: .8rem 1rem; border-radius: .5rem; background: #edf6f5; color: #244b52; }
+.stock-preview.invalid { background: #fce8e6; color: #b42318; }
 .label-controls { display: grid; grid-template-columns: minmax(15rem, 1fr) minmax(18rem, 2fr); gap: 1.25rem; align-items: end; }
 .label-controls h2 { margin-bottom: .7rem; }
 .format-picker { display: flex; flex-wrap: wrap; gap: .8rem 1rem; }

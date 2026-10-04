@@ -87,3 +87,11 @@
 **Motivo:** conservar el precio normal como fuente de verdad, evitar ambigüedad entre ofertas activas y reutilizar exactamente la misma semántica en Precios y Etiquetas.
 
 **Consecuencias:** PostgreSQL rechaza intervalos activos superpuestos para una variante; para promociones más complejas se requerirá otro modelo, no extender arbitrariamente esta entidad.
+
+## D012 — Inventario por presentación y sucursal con movimientos atómicos
+
+**Decisión:** el saldo vive en `inventory_balances` por `product_variant` y `branch`, con cantidades `numeric(18,3)`. `inventory_movements` conserva un historial append-only; entrada e inicial suman, salida resta y ajuste recibe la cantidad física final para que PostgreSQL derive el delta.
+
+**Motivo:** una presentación puede tener saldos distintos por sucursal y el frontend no puede ser autoridad para calcularlos ni para evitar carreras.
+
+**Consecuencias:** owner/admin operan exclusivamente mediante RPCs con bloqueo de fila y transacción; staff conserva sólo lectura. El saldo no puede ser negativo, y un mínimo opcional se administra separadamente sin exponer una actualización arbitraria del saldo.
