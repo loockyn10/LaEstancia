@@ -25,6 +25,11 @@
 - Se aplicaron las migrations de importación y sus correcciones `20261004020000` a `20261004020400`; los tipos oficiales se regeneraron después de los cambios remotos.
 - La matriz `supabase/tests/20261004_sprint7_import_e2e.sql` verificó remotamente los 15 casos solicitados con identidades Auth, roles owner/admin/staff y dos businesses aislados. También comprobó atomicidad, historial oficial, preservación de campos no mapeados y ausencia de duplicación de stock inicial. Sus datos de prueba fueron eliminados y se confirmó que no quedaron residuos.
 
+## Resuelto — Sprint 8
+
+- Se aplicaron las migrations de proveedores y compras, incluida una corrección versionada de `confirm_purchase` para calificar una columna que colisionaba con el nombre de retorno de la RPC. Los dry-runs no mostraron cambios adicionales, seeds ni roles.
+- Se regeneró `packages/database/src/generated.ts` desde el proyecto remoto y la matriz `supabase/tests/20261004_sprint8_purchases_e2e.sql` verificó proveedores, permisos, draft/confirmed, atomicidad, inventario, costos, historial, inmutabilidad y aislamiento entre businesses. Sus datos aislados se eliminaron al finalizar.
+
 ## Riesgos
 
 - Diseñar prematuramente el modelo de producto, variantes o inventario puede cerrar decisiones de negocio aún abiertas.

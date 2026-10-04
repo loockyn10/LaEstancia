@@ -31,6 +31,14 @@ Stock y precios serán capacidades centrales. La UX debe priorizar simplicidad p
 - Owner y admin pueden registrar entradas, salidas y ajustes manuales; staff sólo consulta. Un ajuste siempre expresa la cantidad física final, y el historial conserva el delta y el saldo resultante.
 - El mínimo de stock es opcional por presentación/sucursal. Cero es “Sin stock”; un saldo positivo menor o igual al mínimo es “Bajo”; sin mínimo no se genera alerta de bajo stock.
 
+## Proveedores y compras
+
+- Un proveedor pertenece a un negocio y conserva nombre, datos de contacto, notas y estado activo. Owner y admin lo gestionan; staff sólo lo consulta.
+- Una compra se recibe en una sucursal y puede referenciar un proveedor, fecha, comprobante y notas. Sus ítems apuntan a presentaciones, con cantidades de hasta tres decimales y costos unitarios enteros en centavos.
+- Una compra `draft` no modifica inventario ni costos. Sólo owner/admin puede editarla o cancelarla.
+- Al confirmar, PostgreSQL registra un movimiento de inventario `purchase` por ítem, actualiza el costo actual y deja el historial oficial de costo. En el MVP el costo actual es el **último costo de compra**, no costo promedio, FIFO ni LIFO.
+- Una compra confirmada es inmutable. No se revierte ni se vuelve a borrador: ese flujo será un trabajo posterior.
+
 ## Importación de catálogo
 
 - Owner y admin pueden importar un `.xlsx` o `.csv`; staff no ve la sección ni puede ejecutar la RPC.
@@ -45,4 +53,3 @@ Stock y precios serán capacidades centrales. La UX debe priorizar simplicidad p
 - Fraccionamiento.
 - Alcance y diseño del POS.
 - Alcance y framework del ecommerce público.
-- Modelo de proveedores.

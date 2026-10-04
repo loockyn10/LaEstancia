@@ -11,6 +11,7 @@ import {
   getSupabaseConfigurationError,
 } from "./lib/supabase";
 import { CatalogImport } from "./CatalogImport";
+import { Purchases, Suppliers } from "./Purchasing";
 
 type Role = "owner" | "admin" | "staff";
 type Access =
@@ -55,7 +56,7 @@ type Product = {
 };
 type ProductDraft = Omit<Product, "id">;
 type Branch = { id: string; name: string; is_active: boolean };
-type InventoryMovementType = "initial" | "inbound" | "outbound" | "adjustment";
+type InventoryMovementType = "initial" | "inbound" | "outbound" | "adjustment" | "purchase";
 type InventoryRow = {
   branchId: string;
   branchName: string;
@@ -221,7 +222,7 @@ function quantityInput(quantity: number | null | undefined) {
   return quantity === null || quantity === undefined ? "" : formatQuantity(quantity).replace(/\./g, "");
 }
 function movementLabel(type: InventoryMovementType) {
-  return type === "inbound" || type === "initial"
+  return type === "inbound" || type === "initial" || type === "purchase"
     ? "Entrada"
     : type === "outbound"
       ? "Salida"
@@ -343,7 +344,7 @@ function Sidebar({
   const path = window.location.pathname;
   const item = (href: string, text: string) => (
     <button
-      className={`nav-item ${path === href || (href === "/" && path.startsWith("/products")) ? "selected" : ""}`}
+      className={`nav-item ${path === href || path.startsWith(`${href}/`) || (href === "/" && path.startsWith("/products")) ? "selected" : ""}`}
       onClick={() => navigate(href)}
       type="button"
     >
@@ -365,6 +366,8 @@ function Sidebar({
           {item("/", "Productos")}
           {item("/prices", "Precios")}
           {item("/stock", "Stock")}
+          {item("/suppliers", "Proveedores")}
+          {item("/purchases", "Compras")}
           {item("/labels", "Etiquetas")}
           {item("/brands", "Marcas")}
           {item("/categories", "Categorías")}
@@ -533,6 +536,19 @@ function Catalog({
       <Pricing
         businessId={businessId}
         canEdit={canEdit}
+        products={products}
+        role={role}
+      />
+    );
+  else if (path === "/suppliers")
+    page = <Suppliers businessId={businessId} role={role} />;
+  else if (path === "/purchases" || path === "/purchases/new" || path.startsWith("/purchases/"))
+    page = (
+      <Purchases
+        branches={branches}
+        businessId={businessId}
+        navigate={navigate}
+        path={path}
         products={products}
         role={role}
       />

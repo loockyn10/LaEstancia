@@ -12,31 +12,6 @@ export type Database = {
   __InternalSupabase: {
     PostgrestVersion: "14.18"
   }
-  graphql_public: {
-    Tables: {
-      [_ in never]: never
-    }
-    Views: {
-      [_ in never]: never
-    }
-    Functions: {
-      graphql: {
-        Args: {
-          extensions?: Json
-          operationName?: string
-          query?: string
-          variables?: Json
-        }
-        Returns: Json
-      }
-    }
-    Enums: {
-      [_ in never]: never
-    }
-    CompositeTypes: {
-      [_ in never]: never
-    }
-  }
   public: {
     Tables: {
       branches: {
@@ -241,6 +216,7 @@ export type Database = {
           created_by: string
           id: string
           note: string | null
+          purchase_id: string | null
           quantity_delta: number
           resulting_quantity: number
           type: Database["public"]["Enums"]["inventory_movement_type"]
@@ -253,6 +229,7 @@ export type Database = {
           created_by: string
           id?: string
           note?: string | null
+          purchase_id?: string | null
           quantity_delta: number
           resulting_quantity: number
           type: Database["public"]["Enums"]["inventory_movement_type"]
@@ -265,6 +242,7 @@ export type Database = {
           created_by?: string
           id?: string
           note?: string | null
+          purchase_id?: string | null
           quantity_delta?: number
           resulting_quantity?: number
           type?: Database["public"]["Enums"]["inventory_movement_type"]
@@ -283,6 +261,13 @@ export type Database = {
             columns: ["created_by"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inventory_movements_purchase_id_fkey"
+            columns: ["purchase_id"]
+            isOneToOne: false
+            referencedRelation: "purchases"
             referencedColumns: ["id"]
           },
           {
@@ -439,6 +424,176 @@ export type Database = {
           id?: string
         }
         Relationships: []
+      }
+      purchase_items: {
+        Row: {
+          business_id: string
+          created_at: string
+          id: string
+          purchase_id: string
+          quantity: number
+          unit_cost_cents: number
+          variant_id: string
+        }
+        Insert: {
+          business_id: string
+          created_at?: string
+          id?: string
+          purchase_id: string
+          quantity: number
+          unit_cost_cents: number
+          variant_id: string
+        }
+        Update: {
+          business_id?: string
+          created_at?: string
+          id?: string
+          purchase_id?: string
+          quantity?: number
+          unit_cost_cents?: number
+          variant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "purchase_items_purchase_id_business_id_fkey"
+            columns: ["purchase_id", "business_id"]
+            isOneToOne: false
+            referencedRelation: "purchases"
+            referencedColumns: ["id", "business_id"]
+          },
+          {
+            foreignKeyName: "purchase_items_purchase_id_fkey"
+            columns: ["purchase_id"]
+            isOneToOne: false
+            referencedRelation: "purchases"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "purchase_items_variant_id_business_id_fkey"
+            columns: ["variant_id", "business_id"]
+            isOneToOne: false
+            referencedRelation: "product_variants"
+            referencedColumns: ["id", "business_id"]
+          },
+        ]
+      }
+      purchases: {
+        Row: {
+          branch_id: string
+          business_id: string
+          created_at: string
+          created_by: string
+          document_number: string | null
+          id: string
+          notes: string | null
+          purchase_date: string
+          status: Database["public"]["Enums"]["purchase_status"]
+          supplier_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          branch_id: string
+          business_id: string
+          created_at?: string
+          created_by: string
+          document_number?: string | null
+          id?: string
+          notes?: string | null
+          purchase_date?: string
+          status?: Database["public"]["Enums"]["purchase_status"]
+          supplier_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          branch_id?: string
+          business_id?: string
+          created_at?: string
+          created_by?: string
+          document_number?: string | null
+          id?: string
+          notes?: string | null
+          purchase_date?: string
+          status?: Database["public"]["Enums"]["purchase_status"]
+          supplier_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "purchases_branch_id_business_id_fkey"
+            columns: ["branch_id", "business_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id", "business_id"]
+          },
+          {
+            foreignKeyName: "purchases_business_id_fkey"
+            columns: ["business_id"]
+            isOneToOne: false
+            referencedRelation: "businesses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "purchases_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "purchases_supplier_id_business_id_fkey"
+            columns: ["supplier_id", "business_id"]
+            isOneToOne: false
+            referencedRelation: "suppliers"
+            referencedColumns: ["id", "business_id"]
+          },
+        ]
+      }
+      suppliers: {
+        Row: {
+          business_id: string
+          contact_name: string | null
+          created_at: string
+          email: string | null
+          id: string
+          is_active: boolean
+          name: string
+          notes: string | null
+          phone: string | null
+          updated_at: string
+        }
+        Insert: {
+          business_id: string
+          contact_name?: string | null
+          created_at?: string
+          email?: string | null
+          id?: string
+          is_active?: boolean
+          name: string
+          notes?: string | null
+          phone?: string | null
+          updated_at?: string
+        }
+        Update: {
+          business_id?: string
+          contact_name?: string | null
+          created_at?: string
+          email?: string | null
+          id?: string
+          is_active?: boolean
+          name?: string
+          notes?: string | null
+          phone?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "suppliers_business_id_fkey"
+            columns: ["business_id"]
+            isOneToOne: false
+            referencedRelation: "businesses"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       variant_cost_history: {
         Row: {
@@ -679,6 +834,15 @@ export type Database = {
           variant_id: string
         }[]
       }
+      confirm_purchase: {
+        Args: { target_business_id: string; target_purchase_id: string }
+        Returns: {
+          confirmed_at: string
+          item_count: number
+          purchase_id: string
+          total_cents: number
+        }[]
+      }
       has_active_business_membership: {
         Args: { target_business_id: string }
         Returns: boolean
@@ -767,7 +931,13 @@ export type Database = {
     }
     Enums: {
       business_role: "owner" | "admin" | "staff"
-      inventory_movement_type: "initial" | "inbound" | "outbound" | "adjustment"
+      inventory_movement_type:
+        | "initial"
+        | "inbound"
+        | "outbound"
+        | "adjustment"
+        | "purchase"
+      purchase_status: "draft" | "confirmed" | "cancelled"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -893,13 +1063,17 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
-  graphql_public: {
-    Enums: {},
-  },
   public: {
     Enums: {
       business_role: ["owner", "admin", "staff"],
-      inventory_movement_type: ["initial", "inbound", "outbound", "adjustment"],
+      inventory_movement_type: [
+        "initial",
+        "inbound",
+        "outbound",
+        "adjustment",
+        "purchase",
+      ],
+      purchase_status: ["draft", "confirmed", "cancelled"],
     },
   },
 } as const

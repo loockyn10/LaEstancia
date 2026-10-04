@@ -103,3 +103,11 @@
 **Motivo:** migrar datos sin convertir el frontend en autoridad ni crear duplicados o movimientos de stock no auditables.
 
 **Consecuencias:** reimportar requiere un barcode/SKU para actualizar con seguridad; sin identificador, una coincidencia exacta de producto/presentación se bloquea. La actualización de existentes es opt-in y el stock inicial sólo se registra para variantes nuevas.
+
+## D014 — Confirmación de compra como única transición con efectos
+
+**Decisión:** una compra sólo impacta stock y costo al pasar de `draft` a `confirmed` mediante `confirm_purchase`; el costo MVP de la presentación queda igual al último costo unitario comprado.
+
+**Motivo:** la recepción, el inventario y el costo deben tener una única transacción y una traza auditable, sin que React coordine escrituras independientes.
+
+**Consecuencias:** cada ítem confirmado crea un movimiento `purchase` vinculado a la compra y actualiza `variant_costs`, cuyo trigger preserva el historial. Las compras confirmadas son inmutables; no existe todavía reversión, costo promedio, FIFO ni LIFO.

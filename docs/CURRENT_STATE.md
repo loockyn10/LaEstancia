@@ -22,6 +22,7 @@
 - Migrations `supabase/migrations/20261004020000_catalog_import.sql` a `20261004020400_pricing_history_variant_delete.sql` aplicadas para importar catálogo de forma atómica, con índices normalizados de marcas/categorías, una RPC cliente segura, upserts de precio/costo corregidos y limpieza segura de variantes con historial.
 - La sección Importar soporta `.xlsx` y `.csv`, elección de hoja, mapeo libre, validación, preview, confirmación y resultado. Incluye fixtures CSV aislados para caso válido, identificadores inválidos y columnas reordenadas.
 - `packages/database/src/generated.ts` fue regenerado oficialmente desde el esquema remoto después de aplicar Sprint 7.
+- Las migrations `20261004029900_inventory_purchase_movement.sql`, `20261004030000_suppliers_purchases.sql` y la correctiva `20261004030100_confirm_purchase_column_resolution.sql` fueron aplicadas para Sprint 8. El backoffice incorpora Proveedores y Compras; `packages/database/src/generated.ts` fue regenerado oficialmente.
 
 ## Aplicado remotamente
 
@@ -32,6 +33,7 @@
 - Aplicada mediante `supabase db push --linked` la migration `20261004000000_variant_offers.sql`; el dry-run previo mostró únicamente esa migration, sin seeds, roles ni cambios adicionales.
 - Aplicada mediante `supabase db push --linked` la migration `20261004010000_inventory.sql`; el dry-run previo mostró únicamente esa migration, sin seeds, roles ni cambios adicionales.
 - Aplicadas mediante `supabase db push --linked` las migrations de Sprint 7; cada dry-run mostró sólo su migration esperada, sin seeds, roles ni cambios adicionales.
+- Aplicadas mediante `supabase db push --linked` las migrations de Sprint 8. El dry-run inicial mostró únicamente `20261004029900` y `20261004030000`; el de la corrección posterior mostró exclusivamente `20261004030100`, sin seeds, roles ni cambios adicionales.
 
 ## Verificado remotamente
 
@@ -56,6 +58,7 @@
 - La RPC usa creación idempotente de balance seguida de `SELECT ... FOR UPDATE`, por lo que las operaciones concurrentes se serializan sobre el mismo balance. La carrera remota de dos conexiones queda pendiente de una sesión SQL adicional: el lanzador aislado no pudo abrir una segunda conexión y `dblink` exige credenciales no disponibles. No se afirma como verificación remota completada.
 - Se verificó remotamente que existen los índices normalizados de marca/categoría; ambas RPC de importación son `SECURITY DEFINER`; y sólo `import_catalog_rows_v2` conserva `EXECUTE` para `authenticated`.
 - La matriz E2E autenticada de Sprint 7 creó cuatro identidades Auth reales (owner/admin/staff de A y owner de B), dos businesses y sucursales aisladas. Verificó los 15 casos de importación, atomicidad, historial oficial de precio/costo, preservación de celdas vacías/no mapeadas, no repetición del stock inicial y autorización/ownership en PostgreSQL. Todos los datos `sprint7` se limpiaron; una consulta final confirmó cero usuarios, businesses y movimientos de prueba.
+- La matriz E2E autenticada de Sprint 8 verificó que el draft no modifica saldos ni costos; owner y admin confirman; cada confirmación crea un movimiento `purchase` vinculado, actualiza el costo al último costo de compra y genera historial. También verificó doble confirmación rechazada, rollback completo inducido en el segundo ítem, escritura/confirmación denegada a staff, inmutabilidad de confirmed y rechazo de supplier, branch y variant de otro business. La limpieza dejó cero businesses `sprint8`.
 
 ## Verificado localmente
 
@@ -71,10 +74,12 @@ Supabase CLI se ejecuta temporalmente mediante `pnpm dlx supabase`. No se usó D
 
 Después de Sprint 7, `pnpm check` y `git diff --check` pasaron localmente. La auditoría de producción no introdujo alertas por las dependencias nuevas de lectura; persisten alertas preexistentes de Vite/Supabase en sus versiones actuales del proyecto.
 
+Después de Sprint 8, `pnpm check` y `git diff --check` volvieron a pasar con los tipos regenerados desde el esquema remoto aplicado.
+
 ## Pendiente
 
 Definir el flujo administrativo para altas y gestión de usuarios reales y memberships en un sprint posterior. La migration no incluye policies de escritura de cliente.
 
-Proveedores, compras, POS, ventas, clientes y ecommerce permanecen fuera de este alcance.
+POS, ventas, clientes y ecommerce permanecen fuera de este alcance. Para compras queda pendiente el flujo de reversión de una compra confirmada.
 
 El versionado y la aplicación remota se registran por separado en las secciones anteriores.

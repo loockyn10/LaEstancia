@@ -44,8 +44,16 @@ Los comandos efectivamente verificados se registran en `CURRENT_STATE.md`.
 - Precio y costo se escriben en `variant_prices`/`variant_costs`, por lo que sus triggers conservan el historial. El stock nunca actualiza balances directamente: invoca `record_inventory_movement` con `initial`, y el mínimo usa `set_inventory_minimum`.
 - La aplicación React sólo lee el archivo, propone el mapeo y construye el preview. El backend vuelve a validar autorización, ownership, identificadores duplicados y la sucursal antes de escribir.
 
+## Proveedores y compras aplicados y verificados remotamente
+
+- Las migrations `20261004029900_inventory_purchase_movement.sql` y `20261004030000_suppliers_purchases.sql` agregan `suppliers`, `purchases` y `purchase_items`, con ownership explícito de business y foreign keys compuestas para sucursal, proveedor y presentación. `20261004030100_confirm_purchase_column_resolution.sql` corrige, sin cambiar el contrato, una resolución ambigua de columna dentro de la RPC.
+- `confirm_purchase` bloquea el borrador, valida rol y ownership, registra cada entrada mediante la RPC oficial `record_inventory_movement`, asocia el movimiento a la compra y hace upsert de `variant_costs`. Todo ocurre en una transacción; el trigger existente genera el historial de costos.
+- Se agrega el movimiento `purchase` como entrada auditable. El cliente no tiene escritura directa sobre balances o movimientos; tampoco puede confirmar una compra por updates independientes.
+- RLS habilita lectura de proveedores y encabezados de compras para staff, sin exponer los ítems ni costos. Owner/admin crean y modifican únicamente borradores; compras confirmadas o canceladas no pueden volver a editarse mediante las políticas ni desde el frontend.
+
 ## Propuesto / futuro
 
 - Supabase Storage cuando exista una necesidad concreta de archivos.
+- Reversión explícita de compras confirmadas; no se implementa cancelación con efectos inversos en el MVP.
 
 La configuración de navegador usa únicamente `VITE_SUPABASE_URL` y `VITE_SUPABASE_ANON_KEY`, cargadas desde el `.env.local` raíz mediante Vite. Nunca se usa `service_role` en el frontend. No se contempla offline-first inicialmente; tampoco Tauri, SQLite ni Docker.

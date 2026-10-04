@@ -42,6 +42,11 @@
 .page-header, .section-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; }
 .page-header { margin-bottom: 1.8rem; }
 .filters { display: grid; grid-template-columns: minmax(14rem, 2fr) repeat(3, minmax(9rem, 1fr)); gap: .75rem; margin-bottom: 1.25rem; }
+.list-section { display: grid; gap: 1rem; }
+.empty { margin: 0; padding: 1.5rem; border: 1px dashed #cfdad9; border-radius: .8rem; color: #65777c; text-align: center; }
+.search-results { display: grid; gap: .35rem; margin: -.5rem 0 1rem; padding: .75rem; border: 1px solid #dfe6e5; border-radius: .65rem; background: #fafcfb; }
+.search-results .link-button { text-align: left; }
+small { color: #65777c; }
 .table-wrap, .reference-list, .form-section, .state-box, .reference-form { border: 1px solid #dfe6e5; border-radius: .8rem; background: #fff; box-shadow: 0 .4rem 1.5rem rgb(18 51 63 / 4%); }
 .table-wrap { overflow-x: auto; }
  table { width: 100%; border-collapse: collapse; text-align: left; }
