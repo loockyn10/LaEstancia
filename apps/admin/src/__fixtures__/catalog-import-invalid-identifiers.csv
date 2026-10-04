@@ -1,0 +1,6 @@
+Producto,SKU,Barcode,Precio
+Fila sin nombre,,7791234567001,1000
+Código repetido,A-001,7791234567002,1000
+Código repetido,A-002,7791234567002,1000
+SKU repetido,DUP-001,7791234567003,1000
+SKU repetido,DUP-001,7791234567004,1000

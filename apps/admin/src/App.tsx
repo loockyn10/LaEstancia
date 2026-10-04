@@ -10,6 +10,7 @@ import {
   getSupabaseClient,
   getSupabaseConfigurationError,
 } from "./lib/supabase";
+import { CatalogImport } from "./CatalogImport";
 
 type Role = "owner" | "admin" | "staff";
 type Access =
@@ -367,6 +368,7 @@ function Sidebar({
           {item("/labels", "Etiquetas")}
           {item("/brands", "Marcas")}
           {item("/categories", "Categorías")}
+          {role !== "staff" && item("/import", "Importar")}
         </nav>
       </div>
       <div className="sidebar-bottom">
@@ -393,6 +395,7 @@ function Catalog({
   const [brands, setBrands] = useState<Brand[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
+  const [branches, setBranches] = useState<Branch[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [, forceRoute] = useState(0);
@@ -413,6 +416,7 @@ function Catalog({
       productResult,
       variantResult,
       barcodeResult,
+      branchResult,
     ] = await Promise.all([
       supabase
         .from("brands")
@@ -439,13 +443,19 @@ function Catalog({
         .select("id,variant_id,code,is_primary")
         .eq("business_id", businessId)
         .order("created_at"),
+      supabase
+        .from("branches")
+        .select("id,name,is_active")
+        .eq("business_id", businessId)
+        .order("name"),
     ]);
     const error =
       brandResult.error ??
       categoryResult.error ??
       productResult.error ??
       variantResult.error ??
-      barcodeResult.error;
+      barcodeResult.error ??
+      branchResult.error;
     if (error) {
       setLoadError(humanError(error));
       setLoading(false);
@@ -471,6 +481,7 @@ function Catalog({
       ]);
     setBrands(brandResult.data ?? []);
     setCategories(categoryResult.data ?? []);
+    setBranches(branchResult.data ?? []);
     setProducts(
       (productResult.data ?? []).map((item) => ({
         ...item,
@@ -537,6 +548,23 @@ function Catalog({
     );
   else if (path === "/labels")
     page = <Labels businessId={businessId} products={products} />;
+  else if (path === "/import")
+    page = (
+      <CatalogImport
+        branches={branches}
+        businessId={businessId}
+        canEdit={canEdit}
+        existing={products.flatMap((product) =>
+          product.variants.map((variant) => ({
+            id: variant.id ?? "",
+            productName: product.name,
+            variantName: variant.name,
+            sku: variant.sku,
+            barcodes: variant.barcodes.map((barcode) => barcode.code),
+          })),
+        )}
+      />
+    );
   else if (path.startsWith("/products/"))
     page = loading ? (
       <StateBox title="Cargando producto…" />

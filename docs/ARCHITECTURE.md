@@ -37,6 +37,13 @@ Los comandos efectivamente verificados se registran en `CURRENT_STATE.md`.
 - `record_inventory_movement` es una RPC `SECURITY DEFINER`: valida miembro, rol owner/admin, business, branch y variant; crea el balance en cero si falta, bloquea la fila con `FOR UPDATE`, calcula el nuevo saldo, rechaza negativos, actualiza el balance e inserta el movimiento en una única transacción.
 - Las tablas sólo otorgan `SELECT` al cliente bajo RLS por business. Los movimientos no tienen permisos de `INSERT`, `UPDATE` ni `DELETE` para `authenticated`; las escrituras ocurren únicamente por RPC. `set_inventory_minimum` protege el mínimo con la misma validación y `list_inventory_movements` entrega el nombre del autor sin abrir las filas de `profiles`.
 
+## Importación de catálogo aplicada y verificada remotamente
+
+- Las migrations `20261004020000_catalog_import.sql` a `20261004020400_pricing_history_variant_delete.sql` agregan índices únicos normalizados para marcas/categorías, la RPC pública `import_catalog_rows_v2`, corrigen la resolución PL/pgSQL de sus upserts y preservan la integridad del historial cuando se elimina una variante en cascada.
+- `import_catalog_rows_v2` es `SECURITY DEFINER`, delega la aplicación atómica a una RPC interna sin permiso de cliente y exige el rol owner/admin. La operación interna crea o actualiza catálogo, barcodes y SKU bajo el mismo `business_id`; un conflicto hace fallar toda la importación.
+- Precio y costo se escriben en `variant_prices`/`variant_costs`, por lo que sus triggers conservan el historial. El stock nunca actualiza balances directamente: invoca `record_inventory_movement` con `initial`, y el mínimo usa `set_inventory_minimum`.
+- La aplicación React sólo lee el archivo, propone el mapeo y construye el preview. El backend vuelve a validar autorización, ownership, identificadores duplicados y la sucursal antes de escribir.
+
 ## Propuesto / futuro
 
 - Supabase Storage cuando exista una necesidad concreta de archivos.

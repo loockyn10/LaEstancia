@@ -95,3 +95,11 @@
 **Motivo:** una presentación puede tener saldos distintos por sucursal y el frontend no puede ser autoridad para calcularlos ni para evitar carreras.
 
 **Consecuencias:** owner/admin operan exclusivamente mediante RPCs con bloqueo de fila y transacción; staff conserva sólo lectura. El saldo no puede ser negativo, y un mínimo opcional se administra separadamente sin exponer una actualización arbitraria del saldo.
+
+## D013 — Importación con preview y matching conservador
+
+**Decisión:** el navegador prepara el mapeo y preview, mientras una RPC transaccional aplica el catálogo. Barcode y SKU son los únicos identificadores automáticos; no se fusiona por nombre. Las marcas y categorías se identifican por nombre normalizado dentro del business.
+
+**Motivo:** migrar datos sin convertir el frontend en autoridad ni crear duplicados o movimientos de stock no auditables.
+
+**Consecuencias:** reimportar requiere un barcode/SKU para actualizar con seguridad; sin identificador, una coincidencia exacta de producto/presentación se bloquea. La actualización de existentes es opt-in y el stock inicial sólo se registra para variantes nuevas.

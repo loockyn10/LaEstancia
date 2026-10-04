@@ -3,7 +3,6 @@
 ## Pendientes reales
 
 - Definir la política de naming y branding comercial, incluida la provisión del logo limpio definitivo.
-- Evaluar una constraint de unicidad normalizada para nombres de marcas y categorías antes de depender de esa regla en integraciones o escrituras concurrentes.
 
 ## Resuelto — Sprint 1
 
@@ -20,6 +19,11 @@
 ## Resuelto — Sprint 4
 
 - Se aplicó `supabase/migrations/20261003010000_variant_pricing.sql`, se regeneraron los tipos oficiales y se verificaron remotamente RLS, historial, aislamiento por business y la RPC atómica de actualización masiva de precios.
+
+## Resuelto — Sprint 7
+
+- Se aplicaron las migrations de importación y sus correcciones `20261004020000` a `20261004020400`; los tipos oficiales se regeneraron después de los cambios remotos.
+- La matriz `supabase/tests/20261004_sprint7_import_e2e.sql` verificó remotamente los 15 casos solicitados con identidades Auth, roles owner/admin/staff y dos businesses aislados. También comprobó atomicidad, historial oficial, preservación de campos no mapeados y ausencia de duplicación de stock inicial. Sus datos de prueba fueron eliminados y se confirmó que no quedaron residuos.
 
 ## Riesgos
 

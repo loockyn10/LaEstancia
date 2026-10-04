@@ -31,6 +31,15 @@ Stock y precios serán capacidades centrales. La UX debe priorizar simplicidad p
 - Owner y admin pueden registrar entradas, salidas y ajustes manuales; staff sólo consulta. Un ajuste siempre expresa la cantidad física final, y el historial conserva el delta y el saldo resultante.
 - El mínimo de stock es opcional por presentación/sucursal. Cero es “Sin stock”; un saldo positivo menor o igual al mínimo es “Bajo”; sin mínimo no se genera alerta de bajo stock.
 
+## Importación de catálogo
+
+- Owner y admin pueden importar un `.xlsx` o `.csv`; staff no ve la sección ni puede ejecutar la RPC.
+- El archivo se procesa en el navegador y no se conserva en Supabase Storage. La persona elige hoja cuando aplica, revisa encabezados y filas de ejemplo, mapea columnas y confirma un preview antes de toda escritura.
+- El nombre de producto es obligatorio. La presentación sin columna mapeada se crea como “Presentación única”. Precio y costo aceptan formatos argentinos y se convierten a centavos; el stock inicial requiere una sucursal y queda como movimiento `initial` auditable.
+- Una presentación existente se identifica primero por barcode y luego por SKU. No se fusiona por nombre; una reimportación sin identificador que coincida exactamente con una presentación existente se bloquea para no duplicar a ciegas.
+- Los existentes quedan intactos salvo que la persona active explícitamente la actualización de campos mapeados. Reimportar no vuelve a sumar el stock inicial. Celdas vacías no limpian marca, categoría, precio, costo ni estado existentes.
+- Marcas y categorías nuevas se crean durante la importación con comparación normalizada de mayúsculas y espacios; nombres normalizados repetidos no se permiten dentro del business.
+
 ## Decisiones pendientes
 
 - Fraccionamiento.

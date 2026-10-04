@@ -12,6 +12,31 @@ export type Database = {
   __InternalSupabase: {
     PostgrestVersion: "14.18"
   }
+  graphql_public: {
+    Tables: {
+      [_ in never]: never
+    }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      graphql: {
+        Args: {
+          extensions?: Json
+          operationName?: string
+          query?: string
+          variables?: Json
+        }
+        Returns: Json
+      }
+    }
+    Enums: {
+      [_ in never]: never
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
+  }
   public: {
     Tables: {
       branches: {
@@ -665,6 +690,36 @@ export type Database = {
         }
         Returns: boolean
       }
+      import_catalog_rows: {
+        Args: {
+          import_rows?: Json
+          target_branch_id?: string
+          target_business_id: string
+          update_existing?: boolean
+        }
+        Returns: {
+          detail: string
+          outcome: string
+          product_id: string
+          source_row_number: number
+          variant_id: string
+        }[]
+      }
+      import_catalog_rows_v2: {
+        Args: {
+          import_rows?: Json
+          target_branch_id?: string
+          target_business_id: string
+          update_existing?: boolean
+        }
+        Returns: {
+          detail: string
+          outcome: string
+          product_id: string
+          source_row_number: number
+          variant_id: string
+        }[]
+      }
       list_inventory_movements: {
         Args: {
           target_branch_id: string
@@ -838,6 +893,9 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
+  graphql_public: {
+    Enums: {},
+  },
   public: {
     Enums: {
       business_role: ["owner", "admin", "staff"],
