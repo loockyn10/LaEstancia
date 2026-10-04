@@ -25,6 +25,8 @@ Stock y precios serán capacidades centrales. La UX debe priorizar simplicidad p
 - La búsqueda de productos cubre nombre del producto, SKU de la presentación y código de barras. Marcas y categorías se administran como listas planas activables.
 - `staff` consulta el catálogo; `owner` y `admin` pueden crear y editar. Esta distinción mejora la UX, pero RLS permanece como autoridad de acceso.
 - La sección Precios permite editar importes por presentación, revisar el historial de precio y costo para owner/admin, y ajustar en forma masiva sólo precios de venta mediante un porcentaje con vista previa y confirmación.
+- Una presentación puede tener ofertas simples de precio promocional, independientes del precio base. Una oferta sólo aplica si está activa y dentro de su vigencia; no se contemplan aún 2x1, combos ni descuentos por cantidad.
+- La sección Etiquetas permite seleccionar presentaciones y cantidades de copias para imprimir etiquetas chicas, etiquetas de góndola y carteles de oferta desde la vista previa del navegador. Usa el barcode principal existente cuando está disponible, sin inventar códigos.
 
 ## Decisiones pendientes
 

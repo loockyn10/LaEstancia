@@ -383,6 +383,60 @@ export type Database = {
           },
         ]
       }
+      variant_offers: {
+        Row: {
+          active: boolean
+          business_id: string
+          created_at: string
+          created_by: string
+          ends_at: string | null
+          id: string
+          promotional_price_cents: number
+          starts_at: string
+          updated_at: string
+          variant_id: string
+        }
+        Insert: {
+          active?: boolean
+          business_id: string
+          created_at?: string
+          created_by?: string
+          ends_at?: string | null
+          id?: string
+          promotional_price_cents: number
+          starts_at?: string
+          updated_at?: string
+          variant_id: string
+        }
+        Update: {
+          active?: boolean
+          business_id?: string
+          created_at?: string
+          created_by?: string
+          ends_at?: string | null
+          id?: string
+          promotional_price_cents?: number
+          starts_at?: string
+          updated_at?: string
+          variant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "variant_offers_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "variant_offers_variant_id_business_id_fkey"
+            columns: ["variant_id", "business_id"]
+            isOneToOne: false
+            referencedRelation: "product_variants"
+            referencedColumns: ["id", "business_id"]
+          },
+        ]
+      }
       variant_price_history: {
         Row: {
           amount_cents: number | null
@@ -459,7 +513,28 @@ export type Database = {
       }
     }
     Views: {
-      [_ in never]: never
+      variant_effective_prices: {
+        Row: {
+          base_price_cents: number | null
+          business_id: string | null
+          effective_price_cents: number | null
+          offer_active: boolean | null
+          offer_ends_at: string | null
+          offer_id: string | null
+          offer_starts_at: string | null
+          promotional_price_cents: number | null
+          variant_id: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "variant_prices_variant_id_business_id_fkey"
+            columns: ["variant_id", "business_id"]
+            isOneToOne: false
+            referencedRelation: "product_variants"
+            referencedColumns: ["id", "business_id"]
+          },
+        ]
+      }
     }
     Functions: {
       adjust_variant_prices: {

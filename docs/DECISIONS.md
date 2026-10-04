@@ -79,3 +79,11 @@
 **Motivo:** el costo no debe exponerse a staff, y el historial debe ser una garantía de base de datos, no una responsabilidad del frontend.
 
 **Consecuencias:** una ausencia de fila expresa importe no definido; una limpieza registra un valor nulo en el historial. Los ajustes masivos actúan sólo sobre precios existentes mediante una RPC transaccional que valida business y rol.
+
+## D011 — Oferta simple independiente y precio efectivo centralizado
+
+**Decisión:** una oferta guarda un precio promocional por presentación y no altera `variant_prices`. `variant_effective_prices` resuelve la oferta activa y vigente antes de devolver el precio base.
+
+**Motivo:** conservar el precio normal como fuente de verdad, evitar ambigüedad entre ofertas activas y reutilizar exactamente la misma semántica en Precios y Etiquetas.
+
+**Consecuencias:** PostgreSQL rechaza intervalos activos superpuestos para una variante; para promociones más complejas se requerirá otro modelo, no extender arbitrariamente esta entidad.

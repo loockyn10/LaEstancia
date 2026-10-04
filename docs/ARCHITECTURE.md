@@ -25,6 +25,12 @@ Los comandos efectivamente verificados se registran en `CURRENT_STATE.md`.
 - La RPC `adjust_variant_prices` valida ownership y rol en PostgreSQL y actualiza toda la selección en una sola sentencia; rechaza variantes de otro business o sin precio antes de escribir.
 - Los tipos de `packages/database/src/generated.ts` fueron regenerados oficialmente desde el esquema remoto aplicado.
 
+## Ofertas y etiquetas aplicadas y verificadas remotamente
+
+- La migration `20261004000000_variant_offers.sql` incorpora `variant_offers`, con precio promocional entero en centavos, vigencia, estado, auditoría de creador y timestamps. Una exclusion constraint de PostgreSQL impide solapamientos entre ofertas activas de una misma presentación.
+- El view `variant_effective_prices` centraliza el precio efectivo: toma una oferta activa y vigente, o el precio base si no existe. El view usa `security_invoker`, de modo que las RLS de precios y ofertas se siguen aplicando al usuario que consulta.
+- `variant_offers` permite lectura a cualquier membresía activa y escritura sólo a owner/admin; las políticas y el constraint son la autoridad, no la UI. La migration fue aplicada al proyecto remoto enlazado y sus políticas, la view y las vigencias se verificaron con datos transaccionales revertidos.
+
 ## Propuesto / futuro
 
 - Supabase Storage cuando exista una necesidad concreta de archivos.

@@ -28,6 +28,14 @@ type Access =
 type Brand = { id: string; name: string; is_active: boolean };
 type Category = Brand;
 type Barcode = { id?: string; code: string; is_primary: boolean };
+type Offer = {
+  id: string;
+  variant_id: string;
+  promotional_price_cents: number;
+  starts_at: string;
+  ends_at: string | null;
+  active: boolean;
+};
 type Variant = {
   id?: string;
   name: string;
@@ -92,6 +100,10 @@ function humanError(error: PostgrestError | null) {
     message.includes("code_key")
   )
     return "Ese código de barras ya está asignado a otro producto.";
+  if (message.includes("variant_offers_no_active_overlap"))
+    return "Esta vigencia se superpone con otra oferta activa de la misma presentación.";
+  if (message.includes("ends_at") || message.includes("check constraint"))
+    return "La fecha de fin debe ser posterior a la fecha de inicio.";
   if (
     message.includes("row-level security") ||
     message.includes("permission denied")
@@ -126,6 +138,25 @@ function pesosInput(amountCents: number | null | undefined) {
   const whole = Math.floor(amountCents / 100);
   const decimals = amountCents % 100;
   return decimals ? `${whole},${decimals.toString().padStart(2, "0")}` : `${whole}`;
+}
+function localDateTimeInput(value: string | null | undefined) {
+  if (!value) return "";
+  const date = new Date(value);
+  const offset = date.getTimezoneOffset() * 60_000;
+  return new Date(date.getTime() - offset).toISOString().slice(0, 16);
+}
+function offerStatus(offer: Offer, now = new Date()) {
+  if (!offer.active) return "Desactivada";
+  if (new Date(offer.starts_at) > now) return "Próxima";
+  if (offer.ends_at && new Date(offer.ends_at) <= now) return "Vencida";
+  return "Vigente";
+}
+function offerStatusClass(offer: Offer) {
+  return offerStatus(offer).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+}
+function formatDateRange(startsAt: string, endsAt: string | null) {
+  const format = new Intl.DateTimeFormat("es-AR", { dateStyle: "short", timeStyle: "short" });
+  return `${format.format(new Date(startsAt))}${endsAt ? ` a ${format.format(new Date(endsAt))}` : " en adelante"}`;
 }
 function parsePercent(value: string): number | null {
   const raw = value.trim().replace(",", ".");
@@ -270,6 +301,7 @@ function Sidebar({
         <nav>
           {item("/", "Productos")}
           {item("/prices", "Precios")}
+          {item("/labels", "Etiquetas")}
           {item("/brands", "Marcas")}
           {item("/categories", "Categorías")}
         </nav>
@@ -431,6 +463,8 @@ function Catalog({
         role={role}
       />
     );
+  else if (path === "/labels")
+    page = <Labels businessId={businessId} products={products} />;
   else if (path.startsWith("/products/"))
     page = loading ? (
       <StateBox title="Cargando producto…" />
@@ -632,6 +666,8 @@ type PricingRow = {
   sku: string;
   price: number | null;
   cost: number | null;
+  effectivePrice: number | null;
+  currentOffer: Offer | null;
 };
 type HistoryItem = {
   id: string;
@@ -654,6 +690,8 @@ function Pricing({
 }) {
   const [prices, setPrices] = useState<Record<string, number>>({});
   const [costs, setCosts] = useState<Record<string, number>>({});
+  const [effectivePrices, setEffectivePrices] = useState<Record<string, number>>({});
+  const [offers, setOffers] = useState<Offer[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -667,18 +705,25 @@ function Pricing({
   const [historyTarget, setHistoryTarget] = useState<PricingRow | null>(null);
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [offerTarget, setOfferTarget] = useState<{ row: PricingRow; offer: Offer | null } | null>(null);
+  const [offerPriceInput, setOfferPriceInput] = useState("");
+  const [offerStartsAt, setOfferStartsAt] = useState("");
+  const [offerEndsAt, setOfferEndsAt] = useState("");
+  const [offerActive, setOfferActive] = useState(true);
+  const [offerSaving, setOfferSaving] = useState(false);
 
   const loadPricing = useCallback(async () => {
     const supabase = getSupabaseClient();
     if (!supabase) return;
     setLoading(true);
     setError(null);
-    const priceResult = await supabase
-      .from("variant_prices")
-      .select("variant_id,amount_cents")
-      .eq("business_id", businessId);
-    if (priceResult.error) {
-      setError(humanError(priceResult.error));
+    const [priceResult, offerResult, effectiveResult] = await Promise.all([
+      supabase.from("variant_prices").select("variant_id,amount_cents").eq("business_id", businessId),
+      supabase.from("variant_offers").select("id,variant_id,promotional_price_cents,starts_at,ends_at,active").eq("business_id", businessId).order("starts_at", { ascending: false }),
+      supabase.from("variant_effective_prices").select("variant_id,effective_price_cents").eq("business_id", businessId),
+    ]);
+    if (priceResult.error ?? offerResult.error ?? effectiveResult.error) {
+      setError(humanError(priceResult.error ?? offerResult.error ?? effectiveResult.error));
       setLoading(false);
       return;
     }
@@ -697,6 +742,8 @@ function Pricing({
       return;
     }
     setPrices(Object.fromEntries((priceResult.data ?? []).map((item) => [item.variant_id, item.amount_cents])));
+    setOffers(offerResult.data ?? []);
+    setEffectivePrices(Object.fromEntries((effectiveResult.data ?? []).flatMap((item) => item.variant_id && item.effective_price_cents !== null ? [[item.variant_id, item.effective_price_cents]] : [])));
     setCosts(Object.fromEntries((costResult.data ?? []).map((item) => [item.variant_id, item.amount_cents])));
     setLoading(false);
   }, [businessId, canEdit]);
@@ -709,16 +756,22 @@ function Pricing({
       products.flatMap((product) =>
         product.variants
           .filter((variant): variant is Variant & { id: string } => Boolean(variant.id))
-          .map((variant) => ({
-            variantId: variant.id,
-            productName: product.name,
-            variantName: variant.name,
-            sku: variant.sku,
-            price: prices[variant.id] ?? null,
-            cost: canEdit ? (costs[variant.id] ?? null) : null,
-          })),
+          .map((variant) => {
+            const currentOffer = offers.find((offer) => offer.variant_id === variant.id && offerStatus(offer) === "Vigente") ?? null;
+            const price = prices[variant.id] ?? null;
+            return {
+              variantId: variant.id,
+              productName: product.name,
+              variantName: variant.name,
+              sku: variant.sku,
+              price,
+              cost: canEdit ? (costs[variant.id] ?? null) : null,
+              currentOffer,
+              effectivePrice: effectivePrices[variant.id] ?? price,
+            };
+          }),
       ),
-    [canEdit, costs, prices, products],
+    [canEdit, costs, effectivePrices, offers, prices, products],
   );
   const selectedRows = rows.filter((row) => selected.includes(row.variantId));
   const adjustment = parsePercent(percentInput);
@@ -763,6 +816,46 @@ function Pricing({
     if (failed?.error) return setError(humanError(failed.error));
     setEditing(null);
     setNotice("Los importes se guardaron correctamente.");
+    await loadPricing();
+  }
+  function openOffer(row: PricingRow, offer: Offer | null = null) {
+    setOfferTarget({ row, offer });
+    setOfferPriceInput(pesosInput(offer?.promotional_price_cents));
+    setOfferStartsAt(localDateTimeInput(offer?.starts_at ?? new Date().toISOString()));
+    setOfferEndsAt(localDateTimeInput(offer?.ends_at));
+    setOfferActive(offer?.active ?? true);
+    setError(null);
+    setNotice(null);
+  }
+  async function saveOffer(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!offerTarget || !canEdit) return;
+    const promotionalPrice = parsePesos(offerPriceInput);
+    const startsAt = new Date(offerStartsAt);
+    const endsAt = offerEndsAt ? new Date(offerEndsAt) : null;
+    if (promotionalPrice === null || Number.isNaN(startsAt.valueOf()) || (endsAt && (Number.isNaN(endsAt.valueOf()) || endsAt <= startsAt))) {
+      setError("Indicá un precio promocional válido y una vigencia con fin posterior al inicio.");
+      return;
+    }
+    const supabase = getSupabaseClient();
+    if (!supabase) return;
+    setOfferSaving(true);
+    setError(null);
+    const payload = {
+      business_id: businessId,
+      variant_id: offerTarget.row.variantId,
+      promotional_price_cents: promotionalPrice,
+      starts_at: startsAt.toISOString(),
+      ends_at: endsAt?.toISOString() ?? null,
+      active: offerActive,
+    };
+    const result = offerTarget.offer
+      ? await supabase.from("variant_offers").update(payload).eq("id", offerTarget.offer.id).eq("business_id", businessId)
+      : await supabase.from("variant_offers").insert(payload);
+    setOfferSaving(false);
+    if (result.error) return setError(humanError(result.error));
+    setOfferTarget(null);
+    setNotice("La oferta se guardó correctamente. El precio base no se modificó.");
     await loadPricing();
   }
   async function openHistory(row: PricingRow) {
@@ -813,7 +906,7 @@ function Pricing({
         <div>
           <p className="eyebrow">Catálogo</p>
           <h1>Precios</h1>
-          <p className="subtle">Administrá los importes por presentación. {role === "staff" ? "Tu rol muestra únicamente el precio de venta." : "Los costos y márgenes son privados para administración."}</p>
+          <p className="subtle">Administrá el precio base y sus ofertas por presentación. {role === "staff" ? "Tu rol muestra únicamente precios de venta y promociones vigentes." : "Los costos y márgenes son privados para administración."}</p>
         </div>
       </header>
       {notice && <p className="notice" role="status">{notice}</p>}
@@ -845,25 +938,116 @@ function Pricing({
       {loading ? <StateBox title="Cargando precios…" /> : !rows.length ? <StateBox title="Todavía no hay presentaciones" text="Cuando cargues productos con presentaciones, vas a poder definir sus precios acá." /> : (
         <div className="table-wrap">
           <table>
-            <thead><tr>{canEdit && <th aria-label="Seleccionar" />}<th>Producto</th><th>Presentación</th><th>SKU</th><th>Precio de venta</th>{canEdit && <><th>Costo</th><th>Ganancia bruta</th><th>Margen bruto</th><th /></>}</tr></thead>
+            <thead><tr>{canEdit && <th aria-label="Seleccionar" />}<th>Producto</th><th>Presentación</th><th>SKU</th><th>Precio normal</th><th>Oferta vigente</th><th>Precio efectivo</th>{canEdit && <><th>Costo</th><th>Ganancia bruta</th><th>Margen bruto</th><th /></>}</tr></thead>
             <tbody>{rows.map((row) => {
               const hasMargin = row.price !== null && row.cost !== null;
               const grossProfit = hasMargin ? row.price! - row.cost! : null;
               const margin = hasMargin && row.price! > 0 ? (grossProfit! / row.price!) * 100 : null;
               return <tr key={row.variantId}>
                 {canEdit && <td><input aria-label={`Seleccionar ${row.productName} ${row.variantName}`} checked={selected.includes(row.variantId)} disabled={row.price === null} onChange={() => toggleSelected(row.variantId)} type="checkbox" /></td>}
-                <td><strong>{row.productName}</strong></td><td>{row.variantName}</td><td>{row.sku || "—"}</td><td>{formatPesos(row.price)}</td>
-                {canEdit && <><td>{formatPesos(row.cost)}</td><td>{grossProfit === null ? "Sin datos" : formatPesos(grossProfit)}</td><td>{margin === null ? "Sin datos" : `${margin.toLocaleString("es-AR", { maximumFractionDigits: 1 })} %`}</td><td><div className="actions"><button className="link-button" onClick={() => startEdit(row)} type="button">Editar</button><button className="link-button" onClick={() => void openHistory(row)} type="button">Historial</button></div></td></>}
+                <td><strong>{row.productName}</strong></td><td>{row.variantName}</td><td>{row.sku || "—"}</td><td>{formatPesos(row.price)}</td><td>{row.currentOffer ? <span><strong>{formatPesos(row.currentOffer.promotional_price_cents)}</strong><br /><small>{formatDateRange(row.currentOffer.starts_at, row.currentOffer.ends_at)}</small></span> : "—"}</td><td><strong>{formatPesos(row.effectivePrice)}</strong></td>
+                {canEdit && <><td>{formatPesos(row.cost)}</td><td>{grossProfit === null ? "Sin datos" : formatPesos(grossProfit)}</td><td>{margin === null ? "Sin datos" : `${margin.toLocaleString("es-AR", { maximumFractionDigits: 1 })} %`}</td><td><div className="actions"><button className="link-button" onClick={() => startEdit(row)} type="button">Importes</button><button className="link-button" onClick={() => openOffer(row)} type="button">Nueva oferta</button><button className="link-button" onClick={() => void openHistory(row)} type="button">Historial</button></div></td></>}
               </tr>;
             })}</tbody>
           </table>
         </div>
       )}
+      {!loading && offers.length > 0 && <section className="offer-list"><header className="section-header"><div><h2>Ofertas programadas</h2><p>Una oferta desactivada, futura o vencida nunca reemplaza el precio base.</p></div></header><div className="table-wrap"><table><thead><tr><th>Presentación</th><th>Precio promocional</th><th>Vigencia</th><th>Estado</th>{canEdit && <th />}</tr></thead><tbody>{offers.map((offer) => { const row = rows.find((item) => item.variantId === offer.variant_id); return <tr key={offer.id}><td>{row ? <><strong>{row.productName}</strong><br /><span className="muted">{row.variantName}</span></> : "Presentación no disponible"}</td><td>{formatPesos(offer.promotional_price_cents)}</td><td>{formatDateRange(offer.starts_at, offer.ends_at)}</td><td><span className={`offer-status ${offerStatusClass(offer)}`}>{offerStatus(offer)}</span></td>{canEdit && <td>{row && <button className="link-button" onClick={() => openOffer(row, offer)} type="button">Editar</button>}</td>}</tr>; })}</tbody></table></div></section>}
       {editing && <div className="modal-backdrop" role="presentation"><section aria-modal="true" className="modal" role="dialog"><header className="section-header"><div><h2>Editar importes</h2><p>{editing.productName} · {editing.variantName}</p></div><button className="secondary compact" disabled={saving} onClick={() => setEditing(null)} type="button">Cerrar</button></header><form className="grid" onSubmit={(event) => void saveIndividual(event)}><label>Precio de venta<input autoFocus inputMode="decimal" onChange={(event) => setPriceInput(event.target.value)} placeholder="Ej. 12500,50" value={priceInput} /></label><label>Costo<input inputMode="decimal" onChange={(event) => setCostInput(event.target.value)} placeholder="Ej. 8000" value={costInput} /></label><p className="muted wide">Dejá un campo vacío para quitar su importe actual.</p><div className="form-actions wide"><button disabled={saving} type="submit">{saving ? "Guardando…" : "Guardar importes"}</button><button className="secondary" disabled={saving} onClick={() => setEditing(null)} type="button">Cancelar</button></div></form></section></div>}
+      {offerTarget && <div className="modal-backdrop" role="presentation"><section aria-modal="true" className="modal" role="dialog"><header className="section-header"><div><h2>{offerTarget.offer ? "Editar oferta" : "Nueva oferta"}</h2><p>{offerTarget.row.productName} · {offerTarget.row.variantName}</p></div><button className="secondary compact" disabled={offerSaving} onClick={() => setOfferTarget(null)} type="button">Cerrar</button></header><form className="grid" onSubmit={(event) => void saveOffer(event)}><p className="notice wide">Precio normal: <strong>{formatPesos(offerTarget.row.price)}</strong>. La oferta no modifica este importe.</p><label>Precio promocional<input autoFocus inputMode="decimal" onChange={(event) => setOfferPriceInput(event.target.value)} placeholder="Ej. 12500,50" required value={offerPriceInput} /></label><label>Inicio<input onChange={(event) => setOfferStartsAt(event.target.value)} required type="datetime-local" value={offerStartsAt} /></label><label>Fin (opcional)<input min={offerStartsAt || undefined} onChange={(event) => setOfferEndsAt(event.target.value)} type="datetime-local" value={offerEndsAt} /></label><label className="check"> <input checked={offerActive} onChange={(event) => setOfferActive(event.target.checked)} type="checkbox" /> Activa</label><p className="muted wide">No podés guardar dos ofertas activas que se superpongan para la misma presentación.</p><div className="form-actions wide"><button disabled={offerSaving} type="submit">{offerSaving ? "Guardando…" : "Guardar oferta"}</button><button className="secondary" disabled={offerSaving} onClick={() => setOfferTarget(null)} type="button">Cancelar</button></div></form></section></div>}
       {historyTarget && <div className="modal-backdrop" role="presentation"><section aria-modal="true" className="modal history-modal" role="dialog"><header className="section-header"><div><h2>Historial de importes</h2><p>{historyTarget.productName} · {historyTarget.variantName}</p></div><button className="secondary compact" onClick={() => setHistoryTarget(null)} type="button">Cerrar</button></header>{historyLoading ? <p className="muted">Cargando historial…</p> : !history.length ? <p className="muted">Todavía no hay cambios registrados.</p> : <div className="table-wrap"><table><thead><tr><th>Fecha</th><th>Tipo</th><th>Valor</th><th>Usuario</th></tr></thead><tbody>{history.map((item) => <tr key={`${item.type}-${item.id}`}><td>{new Intl.DateTimeFormat("es-AR", { dateStyle: "short", timeStyle: "short" }).format(new Date(item.changed_at))}</td><td>{item.type}</td><td>{item.amount_cents === null ? "Importe quitado" : formatPesos(item.amount_cents)}</td><td>{item.changed_by ? "Usuario registrado" : "No disponible"}</td></tr>)}</tbody></table></div>}</section></div>}
     </>
   );
 }
+
+type LabelFormat = "small" | "shelf" | "offer";
+type LabelItem = {
+  variantId: string;
+  productName: string;
+  variantName: string;
+  brandName: string | null;
+  barcode: string | null;
+  basePrice: number | null;
+  effectivePrice: number | null;
+  promotionalPrice: number | null;
+};
+
+function PrintedLabel({ item, format }: { item: LabelItem; format: LabelFormat }) {
+  const hasOffer = item.promotionalPrice !== null;
+  if (format === "offer") return <article className="print-card offer-poster"><div className="poster-brand">La Estancia</div><div className="poster-offer">OFERTA</div>{item.brandName && <p className="poster-brand-name">{item.brandName}</p>}<h2>{item.productName}</h2><p className="poster-variant">{item.variantName}</p>{hasOffer ? <><p className="poster-normal">Antes {formatPesos(item.basePrice)}</p><strong className="poster-price">{formatPesos(item.promotionalPrice)}</strong></> : <><p className="poster-normal">No hay oferta vigente</p><strong className="poster-price">{formatPesos(item.basePrice)}</strong></>}{item.barcode && <p className="print-barcode">{item.barcode}</p>}</article>;
+  return <article className={`print-card label-${format}`}>
+    {format === "shelf" && item.brandName && <p className="label-brand">{item.brandName}</p>}
+    <h2>{item.productName}</h2><p className="label-variant">{item.variantName}</p>
+    {hasOffer && <p className="label-normal">Normal: {formatPesos(item.basePrice)}</p>}
+    <strong className="label-price">{formatPesos(item.effectivePrice)}</strong>
+    {item.barcode ? <p className="print-barcode">{item.barcode}</p> : <p className="no-barcode">Sin código de barras</p>}
+  </article>;
+}
+
+function Labels({ businessId, products }: { businessId: string; products: Product[] }) {
+  const [items, setItems] = useState<LabelItem[]>([]);
+  const [selected, setSelected] = useState<Record<string, number>>({});
+  const [format, setFormat] = useState<LabelFormat>("small");
+  const [search, setSearch] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    const supabase = getSupabaseClient();
+    if (!supabase) return;
+    setLoading(true);
+    setError(null);
+    const [brandResult, priceResult] = await Promise.all([
+      supabase.from("brands").select("id,name").eq("business_id", businessId),
+      supabase.from("variant_effective_prices").select("variant_id,base_price_cents,effective_price_cents,promotional_price_cents").eq("business_id", businessId),
+    ]);
+    const failure = brandResult.error ?? priceResult.error;
+    if (failure) {
+      setError(humanError(failure));
+      setLoading(false);
+      return;
+    }
+    const brands = new Map((brandResult.data ?? []).map((brand) => [brand.id, brand.name]));
+    const prices = new Map((priceResult.data ?? []).map((price) => [price.variant_id, price]));
+    setItems(products.flatMap((product) => product.variants.filter((variant): variant is Variant & { id: string } => Boolean(variant.id)).map((variant) => {
+      const price = prices.get(variant.id);
+      return {
+        variantId: variant.id,
+        productName: product.name,
+        variantName: variant.name,
+        brandName: product.brand_id ? brands.get(product.brand_id) ?? null : null,
+        barcode: variant.barcodes.find((barcode) => barcode.is_primary)?.code ?? null,
+        basePrice: price?.base_price_cents ?? null,
+        effectivePrice: price?.effective_price_cents ?? null,
+        promotionalPrice: price?.promotional_price_cents ?? null,
+      };
+    })));
+    setLoading(false);
+  }, [businessId, products]);
+  useEffect(() => { void load(); }, [load]);
+
+  const filtered = useMemo(() => {
+    const normalized = search.trim().toLocaleLowerCase("es-AR");
+    return !normalized ? items : items.filter((item) => [item.productName, item.variantName, item.brandName ?? "", item.barcode ?? ""].some((value) => value.toLocaleLowerCase("es-AR").includes(normalized)));
+  }, [items, search]);
+  const selectedItems = items.filter((item) => (selected[item.variantId] ?? 0) > 0);
+  const copies = selectedItems.flatMap((item) => Array.from({ length: selected[item.variantId] }, (_, copy) => ({ item, copy })));
+  function setQuantity(variantId: string, quantity: number) {
+    setSelected((current) => ({ ...current, [variantId]: Math.max(0, Math.min(99, quantity || 0)) }));
+  }
+  function selectVisible() {
+    setSelected((current) => ({ ...current, ...Object.fromEntries(filtered.map((item) => [item.variantId, current[item.variantId] || 1])) }));
+  }
+
+  return <>
+    <header className="page-header no-print"><div><p className="eyebrow">Catálogo</p><h1>Etiquetas</h1><p className="subtle">Elegí presentaciones y cantidades; la vista previa muestra exactamente lo que se imprimirá.</p></div><button disabled={!copies.length} onClick={() => window.print()} type="button">Imprimir</button></header>
+    {error && <p className="form-error no-print" role="alert">{error}</p>}
+    <section className="label-controls no-print"><div className="format-picker"><h2>Formato</h2><label><input checked={format === "small"} name="label-format" onChange={() => setFormat("small")} type="radio" /> Etiqueta chica</label><label><input checked={format === "shelf"} name="label-format" onChange={() => setFormat("shelf")} type="radio" /> Etiqueta de góndola</label><label><input checked={format === "offer"} name="label-format" onChange={() => setFormat("offer")} type="radio" /> Cartel de oferta</label></div><div><label>Buscar producto, presentación, marca o código<input onChange={(event) => setSearch(event.target.value)} placeholder="Ej. Royal Canin o 779…" value={search} /></label><button className="secondary compact" onClick={selectVisible} type="button">Seleccionar visibles</button></div></section>
+    <section className="label-selection no-print"><header className="section-header"><div><h2>Presentaciones</h2><p>{selectedItems.length ? `${selectedItems.length} seleccionadas · ${copies.length} copias` : "Seleccioná al menos una presentación."}</p></div></header>{loading ? <p className="muted">Cargando precios efectivos…</p> : !filtered.length ? <p className="muted">No encontramos presentaciones con esa búsqueda.</p> : <div className="table-wrap"><table><thead><tr><th>Imprimir</th><th>Producto</th><th>Presentación</th><th>Marca</th><th>Precio normal</th><th>Promoción vigente</th><th>Barcode principal</th><th>Copias</th></tr></thead><tbody>{filtered.map((item) => { const quantity = selected[item.variantId] ?? 0; return <tr key={item.variantId}><td><input aria-label={`Imprimir ${item.productName} ${item.variantName}`} checked={quantity > 0} onChange={(event) => setQuantity(item.variantId, event.target.checked ? Math.max(1, quantity) : 0)} type="checkbox" /></td><td><strong>{item.productName}</strong></td><td>{item.variantName}</td><td>{item.brandName ?? "—"}</td><td>{formatPesos(item.basePrice)}</td><td>{item.promotionalPrice === null ? "—" : formatPesos(item.promotionalPrice)}</td><td>{item.barcode ?? <span className="muted">Sin barcode</span>}</td><td><input aria-label={`Copias de ${item.productName} ${item.variantName}`} disabled={!quantity} min="1" onChange={(event) => setQuantity(item.variantId, Number(event.target.value))} type="number" value={quantity || ""} /></td></tr>; })}</tbody></table></div>}</section>
+    <section className={`print-preview format-${format}`}><header className="section-header no-print"><div><p className="eyebrow">Vista previa</p><h2>{format === "small" ? "Etiqueta chica" : format === "shelf" ? "Etiqueta de góndola" : "Cartel de oferta"}</h2></div><span className="muted">{copies.length ? `${copies.length} unidad${copies.length === 1 ? "" : "es"} a imprimir` : "Sin selecciones"}</span></header>{copies.length ? <div className="print-sheet">{copies.map(({ item, copy }) => <PrintedLabel item={item} format={format} key={`${item.variantId}-${copy}`} />)}</div> : <p className="empty-preview no-print">La vista previa aparecerá cuando selecciones una presentación.</p>}</section>
+  </>;
+}
+
 function StateBox({
   title,
   text,
