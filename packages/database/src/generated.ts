@@ -219,6 +219,7 @@ export type Database = {
           purchase_id: string | null
           quantity_delta: number
           resulting_quantity: number
+          sale_id: string | null
           type: Database["public"]["Enums"]["inventory_movement_type"]
           variant_id: string
         }
@@ -232,6 +233,7 @@ export type Database = {
           purchase_id?: string | null
           quantity_delta: number
           resulting_quantity: number
+          sale_id?: string | null
           type: Database["public"]["Enums"]["inventory_movement_type"]
           variant_id: string
         }
@@ -245,6 +247,7 @@ export type Database = {
           purchase_id?: string | null
           quantity_delta?: number
           resulting_quantity?: number
+          sale_id?: string | null
           type?: Database["public"]["Enums"]["inventory_movement_type"]
           variant_id?: string
         }
@@ -268,6 +271,13 @@ export type Database = {
             columns: ["purchase_id"]
             isOneToOne: false
             referencedRelation: "purchases"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inventory_movements_sale_id_fkey"
+            columns: ["sale_id"]
+            isOneToOne: false
+            referencedRelation: "sales"
             referencedColumns: ["id"]
           },
           {
@@ -545,6 +555,122 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "suppliers"
             referencedColumns: ["id", "business_id"]
+          },
+        ]
+      }
+      sale_items: {
+        Row: {
+          business_id: string
+          created_at: string
+          id: string
+          line_total_cents: number
+          quantity: number
+          sale_id: string
+          unit_price_cents: number
+          variant_id: string
+        }
+        Insert: {
+          business_id: string
+          created_at?: string
+          id?: string
+          line_total_cents: number
+          quantity: number
+          sale_id: string
+          unit_price_cents: number
+          variant_id: string
+        }
+        Update: {
+          business_id?: string
+          created_at?: string
+          id?: string
+          line_total_cents?: number
+          quantity?: number
+          sale_id?: string
+          unit_price_cents?: number
+          variant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sale_items_sale_id_business_id_fkey"
+            columns: ["sale_id", "business_id"]
+            isOneToOne: false
+            referencedRelation: "sales"
+            referencedColumns: ["id", "business_id"]
+          },
+          {
+            foreignKeyName: "sale_items_sale_id_fkey"
+            columns: ["sale_id"]
+            isOneToOne: false
+            referencedRelation: "sales"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sale_items_variant_id_business_id_fkey"
+            columns: ["variant_id", "business_id"]
+            isOneToOne: false
+            referencedRelation: "product_variants"
+            referencedColumns: ["id", "business_id"]
+          },
+        ]
+      }
+      sales: {
+        Row: {
+          branch_id: string
+          business_id: string
+          created_at: string
+          created_by: string
+          id: string
+          idempotency_key: string
+          payment_method: Database["public"]["Enums"]["sale_payment_method"]
+          sale_number: number
+          status: Database["public"]["Enums"]["sale_status"]
+          total_cents: number
+        }
+        Insert: {
+          branch_id: string
+          business_id: string
+          created_at?: string
+          created_by: string
+          id?: string
+          idempotency_key: string
+          payment_method: Database["public"]["Enums"]["sale_payment_method"]
+          sale_number?: number
+          status?: Database["public"]["Enums"]["sale_status"]
+          total_cents: number
+        }
+        Update: {
+          branch_id?: string
+          business_id?: string
+          created_at?: string
+          created_by?: string
+          id?: string
+          idempotency_key?: string
+          payment_method?: Database["public"]["Enums"]["sale_payment_method"]
+          sale_number?: number
+          status?: Database["public"]["Enums"]["sale_status"]
+          total_cents?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sales_branch_id_business_id_fkey"
+            columns: ["branch_id", "business_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id", "business_id"]
+          },
+          {
+            foreignKeyName: "sales_business_id_fkey"
+            columns: ["business_id"]
+            isOneToOne: false
+            referencedRelation: "businesses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sales_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
           },
         ]
       }
@@ -843,6 +969,21 @@ export type Database = {
           total_cents: number
         }[]
       }
+      confirm_sale: {
+        Args: {
+          request_id: string
+          requested_items: Json
+          sale_payment_method: Database["public"]["Enums"]["sale_payment_method"]
+          target_branch_id: string
+          target_business_id: string
+        }
+        Returns: {
+          created_at: string
+          sale_id: string
+          sale_number: number
+          total_cents: number
+        }[]
+      }
       has_active_business_membership: {
         Args: { target_business_id: string }
         Returns: boolean
@@ -901,6 +1042,33 @@ export type Database = {
           type: Database["public"]["Enums"]["inventory_movement_type"]
         }[]
       }
+      list_sale_items: {
+        Args: { target_business_id: string; target_sale_id: string }
+        Returns: {
+          id: string
+          line_total_cents: number
+          product_name: string
+          quantity: number
+          unit_price_cents: number
+          variant_id: string
+          variant_name: string
+        }[]
+      }
+      list_sales: {
+        Args: { target_branch_id?: string; target_business_id: string }
+        Returns: {
+          branch_id: string
+          branch_name: string
+          created_at: string
+          created_by: string
+          created_by_name: string
+          id: string
+          payment_method: Database["public"]["Enums"]["sale_payment_method"]
+          sale_number: number
+          status: Database["public"]["Enums"]["sale_status"]
+          total_cents: number
+        }[]
+      }
       record_inventory_movement: {
         Args: {
           movement_note?: string
@@ -937,7 +1105,10 @@ export type Database = {
         | "outbound"
         | "adjustment"
         | "purchase"
+        | "sale"
       purchase_status: "draft" | "confirmed" | "cancelled"
+      sale_payment_method: "cash" | "debit" | "credit" | "transfer" | "other"
+      sale_status: "completed"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -1072,8 +1243,11 @@ export const Constants = {
         "outbound",
         "adjustment",
         "purchase",
+        "sale",
       ],
       purchase_status: ["draft", "confirmed", "cancelled"],
+      sale_payment_method: ["cash", "debit", "credit", "transfer", "other"],
+      sale_status: ["completed"],
     },
   },
 } as const

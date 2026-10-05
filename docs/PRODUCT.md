@@ -48,6 +48,14 @@ Stock y precios serán capacidades centrales. La UX debe priorizar simplicidad p
 - Los existentes quedan intactos salvo que la persona active explícitamente la actualización de campos mapeados. Reimportar no vuelve a sumar el stock inicial. Celdas vacías no limpian marca, categoría, precio, costo ni estado existentes.
 - Marcas y categorías nuevas se crean durante la importación con comparación normalizada de mayúsculas y espacios; nombres normalizados repetidos no se permiten dentro del business.
 
+## Ventas físicas / POS
+
+- Owner, admin y staff pueden registrar ventas físicas para una sucursal activa de su business. Cada venta nace `completed`, es inmutable y usa un solo medio de pago: efectivo, débito, crédito, transferencia u otro.
+- El POS busca por producto, SKU o barcode; un scanner USB puede completar la búsqueda y confirmar con Enter. Cada ítem representa una presentación y permite cantidades de hasta tres decimales.
+- Al confirmar, PostgreSQL resuelve el precio efectivo vigente: oferta activa dentro de su período, o en su ausencia el precio base. No se aceptan precios enviados por el navegador y una presentación sin precio efectivo no se puede vender.
+- Cada `sale_item` conserva cantidad, precio unitario y subtotal vendidos en centavos. Para cantidades decimales, el subtotal de cada línea se redondea al centavo más cercano; cambios futuros de precio u oferta no alteran ese snapshot.
+- Una venta descuenta el saldo de la sucursal y registra un movimiento `sale` vinculado. La operación es atómica; los reintentos del mismo intento de cliente son idempotentes.
+
 ## Decisiones pendientes
 
 - Fraccionamiento.

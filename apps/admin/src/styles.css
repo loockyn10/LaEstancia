@@ -46,6 +46,10 @@
 .empty { margin: 0; padding: 1.5rem; border: 1px dashed #cfdad9; border-radius: .8rem; color: #65777c; text-align: center; }
 .search-results { display: grid; gap: .35rem; margin: -.5rem 0 1rem; padding: .75rem; border: 1px solid #dfe6e5; border-radius: .65rem; background: #fafcfb; }
 .search-results .link-button { text-align: left; }
+.pos-layout { display: grid; grid-template-columns: minmax(16rem, .8fr) minmax(0, 1.5fr); gap: 1.5rem; align-items: start; }
+.pos-controls, .pos-cart { display: grid; gap: 1rem; }
+.pos-controls label, .pos-cart > label { display: grid; gap: .45rem; }
+.pos-cart h2 { margin: 0; }
 small { color: #65777c; }
 .table-wrap, .reference-list, .form-section, .state-box, .reference-form { border: 1px solid #dfe6e5; border-radius: .8rem; background: #fff; box-shadow: 0 .4rem 1.5rem rgb(18 51 63 / 4%); }
 .table-wrap { overflow-x: auto; }
@@ -180,6 +184,7 @@ small { color: #65777c; }
 .nav-item { width: auto; white-space: nowrap; }
 .filters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .filters input { grid-column: 1 / -1; }
+.pos-layout { grid-template-columns: 1fr; }
 .reference-form { align-items: stretch; flex-wrap: wrap; }
 .reference-form label { min-width: 100%; }
 .grid { grid-template-columns: 1fr; }

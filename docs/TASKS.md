@@ -3,6 +3,8 @@
 ## Pendientes reales
 
 - Definir la política de naming y branding comercial, incluida la provisión del logo limpio definitivo.
+- Diseñar devolución/reversión auditable de ventas completed.
+- Definir pagos divididos cuando el flujo de caja lo requiera.
 
 ## Resuelto — Sprint 1
 
@@ -29,6 +31,11 @@
 
 - Se aplicaron las migrations de proveedores y compras, incluida una corrección versionada de `confirm_purchase` para calificar una columna que colisionaba con el nombre de retorno de la RPC. Los dry-runs no mostraron cambios adicionales, seeds ni roles.
 - Se regeneró `packages/database/src/generated.ts` desde el proyecto remoto y la matriz `supabase/tests/20261004_sprint8_purchases_e2e.sql` verificó proveedores, permisos, draft/confirmed, atomicidad, inventario, costos, historial, inmutabilidad y aislamiento entre businesses. Sus datos aislados se eliminaron al finalizar.
+
+## Resuelto — Sprint 9
+
+- Se aplicaron las migrations de ventas físicas, el movimiento `sale` y las tres correcciones versionadas de `confirm_sale`/movimientos; sus dry-runs no incluyeron cambios adicionales, seeds ni roles.
+- Se regeneró `packages/database/src/generated.ts` y la matriz `supabase/tests/20261004_sprint9_sales_e2e.sql` verificó roles, pricing, ofertas, stock, auditoría, snapshots, atomicidad, aislamiento, cantidades decimales, inmutabilidad e idempotencia. La transacción eliminó todos los datos aislados al finalizar.
 
 ## Riesgos
 

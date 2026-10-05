@@ -12,6 +12,7 @@ import {
 } from "./lib/supabase";
 import { CatalogImport } from "./CatalogImport";
 import { Purchases, Suppliers } from "./Purchasing";
+import { Sales } from "./Sales";
 
 type Role = "owner" | "admin" | "staff";
 type Access =
@@ -56,7 +57,7 @@ type Product = {
 };
 type ProductDraft = Omit<Product, "id">;
 type Branch = { id: string; name: string; is_active: boolean };
-type InventoryMovementType = "initial" | "inbound" | "outbound" | "adjustment" | "purchase";
+type InventoryMovementType = "initial" | "inbound" | "outbound" | "adjustment" | "purchase" | "sale";
 type InventoryRow = {
   branchId: string;
   branchName: string;
@@ -368,6 +369,7 @@ function Sidebar({
           {item("/stock", "Stock")}
           {item("/suppliers", "Proveedores")}
           {item("/purchases", "Compras")}
+          {item("/sales", "Ventas")}
           {item("/labels", "Etiquetas")}
           {item("/brands", "Marcas")}
           {item("/categories", "Categorías")}
@@ -542,6 +544,16 @@ function Catalog({
     );
   else if (path === "/suppliers")
     page = <Suppliers businessId={businessId} role={role} />;
+  else if (path === "/sales" || path === "/sales/new" || path.startsWith("/sales/"))
+    page = (
+      <Sales
+        branches={branches}
+        businessId={businessId}
+        navigate={navigate}
+        path={path}
+        products={products}
+      />
+    );
   else if (path === "/purchases" || path === "/purchases/new" || path.startsWith("/purchases/"))
     page = (
       <Purchases

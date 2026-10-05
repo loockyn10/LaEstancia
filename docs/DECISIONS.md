@@ -111,3 +111,11 @@
 **Motivo:** la recepción, el inventario y el costo deben tener una única transacción y una traza auditable, sin que React coordine escrituras independientes.
 
 **Consecuencias:** cada ítem confirmado crea un movimiento `purchase` vinculado a la compra y actualiza `variant_costs`, cuyo trigger preserva el historial. Las compras confirmadas son inmutables; no existe todavía reversión, costo promedio, FIFO ni LIFO.
+
+## D015 — Venta completed atómica con precio snapshot e idempotencia
+
+**Decisión:** la venta física nace `completed` únicamente mediante `confirm_sale`. La RPC resuelve el precio efectivo vigente, guarda su snapshot por línea, descuenta stock y registra el movimiento `sale` en una sola transacción. El cliente aporta un UUID de intento para que un reintento devuelva la venta existente y no duplique efectos.
+
+**Motivo:** ni el precio ni el inventario pueden depender de escrituras coordinadas por React; una interrupción o reintento de red no debe cobrar o descontar dos veces.
+
+**Consecuencias:** owner/admin/staff pueden vender pero no escribir `sales`, `sale_items` ni balances directamente. Las cantidades admiten tres decimales; cada subtotal se redondea al centavo más cercano antes de almacenarse. No existen todavía cancelaciones de completed, devoluciones ni pagos divididos.

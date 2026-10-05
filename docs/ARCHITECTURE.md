@@ -51,6 +51,12 @@ Los comandos efectivamente verificados se registran en `CURRENT_STATE.md`.
 - Se agrega el movimiento `purchase` como entrada auditable. El cliente no tiene escritura directa sobre balances o movimientos; tampoco puede confirmar una compra por updates independientes.
 - RLS habilita lectura de proveedores y encabezados de compras para staff, sin exponer los ítems ni costos. Owner/admin crean y modifican únicamente borradores; compras confirmadas o canceladas no pueden volver a editarse mediante las políticas ni desde el frontend.
 
+## Ventas / POS aplicados y verificados remotamente
+
+- Las migrations `20261004040000_inventory_sale_movement.sql` y `20261004040100_sales_pos.sql` incorporan el movimiento `sale`, `sales`, `sale_items`, los enums de estado y medio de pago, y enlaces auditables entre movimiento y venta. Las correctivas `20261004040200_confirm_sale_column_resolution.sql` y `20261004040300_confirm_sale_idempotency_resolution.sql` califican el valor retornado y preservan correctamente el total inicial de una venta nueva; `20261004040400_record_inventory_movement_reject_sale.sql` reserva el movimiento `sale` para `confirm_sale`.
+- `confirm_sale` es una RPC `SECURITY DEFINER` que admite owner/admin/staff, valida ownership, precio efectivo, cantidades e idempotency key; bloquea balances por variante en orden determinista, rechaza stock negativo y crea venta, ítems y movimientos en la misma transacción.
+- `sales` y `sale_items` sólo otorgan lectura bajo RLS por membresía activa; no hay escrituras directas de cliente. `list_sales` y `list_sale_items` entregan historial con autor y nombres comerciales sin abrir acceso general a perfiles.
+
 ## Propuesto / futuro
 
 - Supabase Storage cuando exista una necesidad concreta de archivos.
