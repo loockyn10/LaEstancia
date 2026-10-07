@@ -1188,6 +1188,73 @@ export type Database = {
           total_cents: number
         }[]
       }
+      dashboard_cash_summary: {
+        Args: { target_branch_id?: string; target_business_id: string }
+        Returns: {
+          branch_id: string
+          branch_name: string
+          expected_cash_cents: number
+          last_closed_at: string
+          last_difference_cents: number
+          open_session_id: string
+          opened_at: string
+        }[]
+      }
+      dashboard_overview: {
+        Args: {
+          target_branch_id?: string
+          target_business_id: string
+          target_end_date: string
+          target_start_date: string
+        }
+        Returns: {
+          average_ticket_cents: number
+          gross_margin_cents: number
+          gross_margin_percent: number
+          low_stock_count: number
+          margin_missing_cost_item_count: number
+          out_of_stock_count: number
+          purchase_count: number
+          purchase_total_cents: number
+          sales_count: number
+          sales_total_cents: number
+        }[]
+      }
+      dashboard_payment_methods: {
+        Args: {
+          target_branch_id?: string
+          target_business_id: string
+          target_end_date: string
+          target_start_date: string
+        }
+        Returns: {
+          payment_method: Database["public"]["Enums"]["sale_payment_method"]
+          percentage: number
+          total_cents: number
+        }[]
+      }
+      dashboard_period_bounds: {
+        Args: { target_end_date: string; target_start_date: string }
+        Returns: {
+          ends_at: string
+          starts_at: string
+        }[]
+      }
+      dashboard_top_products: {
+        Args: {
+          result_limit?: number
+          target_branch_id?: string
+          target_business_id: string
+          target_end_date: string
+          target_start_date: string
+        }
+        Returns: {
+          product_name: string
+          quantity: number
+          revenue_cents: number
+          variant_name: string
+        }[]
+      }
       has_active_business_membership: {
         Args: { target_business_id: string }
         Returns: boolean

@@ -127,3 +127,11 @@
 **Motivo:** evitar divergencias entre POS, efectivo físico y acumuladores modificables, y hacer que apertura, venta, movimiento y cierre sean auditables y seguros ante concurrencia.
 
 **Consecuencias:** `sales.cash_session_id` es nullable para preservar ventas históricas y permitir ventas sin caja abierta. Sólo ventas `cash` integran el efectivo esperado; débito, crédito, transferencia y otros quedan en el resumen no físico. Los tres roles actuales operan las sucursales de su business porque todavía no existe asignación de membresía por branch.
+
+## D017 — Dashboard con agregados protegidos e histórico de costos como estimación
+
+**Decisión:** calcular el dashboard mediante funciones PostgreSQL por business, período y sucursal; usar el último evento de `variant_cost_history` anterior a cada venta para el margen bruto estimado y no el costo actual.
+
+**Motivo:** evitar descargar historial al navegador, respetar el aislamiento RLS y impedir que un cambio posterior de costo reescriba conceptualmente una venta anterior.
+
+**Consecuencias:** ventas usan sus snapshots de línea; compras sólo incluyen `confirmed`; el margen se publica sólo cuando todas las líneas tienen un costo histórico aplicable y se etiqueta como estimado. Owner/admin lo reciben desde backend; staff no recibe costos, compras agregadas ni margen. No se implementan costo promedio, FIFO, LIFO ni contabilidad.

@@ -2,6 +2,10 @@
 
 ## Versionado en el repositorio
 
+- Aplicadas mediante `pnpm dlx supabase db push --linked` las migrations `20261007010000_operational_dashboard.sql` y `20261007010100_dashboard_payment_methods_fix.sql`. Cada dry-run mostró exclusivamente la migration esperada, sin seeds, roles ni cambios adicionales; la segunda reemplaza sólo una referencia ambigua dentro de la RPC de medios de pago.
+- `packages/database/src/generated.ts` fue regenerado oficialmente desde el esquema remoto final, incluyendo las RPCs del Dashboard.
+- La pantalla inicial es ahora un Dashboard operativo filtrable por período y sucursal, con cards, alertas de stock navegables, medios de pago, top de productos y resumen de caja. Owner/admin ven compras y margen estimado; staff no los recibe desde backend.
+
 - Workspace pnpm.
 - Integración cliente con Supabase mediante variables públicas de entorno y `.env.example`.
 - Login email/contraseña, restauración de sesión, logout y rutas de backoffice protegidas en el cliente.
@@ -90,6 +94,8 @@ Después de Sprint 8, `pnpm check` y `git diff --check` volvieron a pasar con lo
 - Después de Sprint 9, `pnpm check` y `git diff --check` pasaron con los tipos regenerados desde el esquema remoto final.
 
 - Para Sprint 10, `pnpm check` y `git diff --check` pasan localmente después de aplicar la migration y regenerar tipos oficiales.
+
+- La matriz E2E autenticada de Sprint 11 verificó total/cantidad/ticket de ventas, medios de pago, ranking con cantidades decimales, compras confirmed, stock bajo/sin stock, cajas abiertas y último cierre, fechas, sucursal, períodos sin actividad, aislamiento Business A/B y permisos. También probó que staff no recibe compras, costos ni márgenes, y que owner/admin calcula el margen con el último costo histórico anterior a la venta, no el costo actual. Finalizó con rollback; una consulta posterior confirmó cero fixtures `sprint11`.
 
 ## Pendiente
 

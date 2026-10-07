@@ -64,6 +64,17 @@ Stock y precios serán capacidades centrales. La UX debe priorizar simplicidad p
 - El resumen separa efectivo, débito, crédito, transferencia y otros. El efectivo esperado es `efectivo inicial + ventas cash + ingresos manuales - egresos manuales`.
 - Al cerrar se guarda el efectivo contado, el esperado, la diferencia y un snapshot de ventas por medio de pago e ingresos/egresos. La sesión cerrada queda inmutable.
 
+## Dashboard operativo
+
+- La pantalla inicial reúne un resumen filtrable por rango de fechas calendario y sucursal; los rangos se interpretan en `America/Argentina/Buenos_Aires` y el límite final es exclusivo en backend.
+- **Ventas** es la suma de `sales.total_cents` de ventas `completed` creadas dentro del período. La cantidad de ventas cuenta esas filas y el ticket promedio es ventas/cantidad, redondeado al centavo.
+- **Compras** suma `round(purchase_items.quantity * unit_cost_cents)` de compras `confirmed` cuya `purchase_date` está dentro del período. Drafts y canceladas no cuentan.
+- El desglose por medio de pago usa el total snapshot de cada venta. El ranking agrupa las líneas vendidas por producto y presentación, conserva cantidades de hasta tres decimales y ordena por cantidad.
+- El **margen bruto histórico estimado** sólo se muestra a owner/admin. Por línea vendida es `line_total_cents - round(quantity × último costo registrado antes de la venta)`. No es costo promedio, FIFO ni una utilidad neta. Si falta costo histórico para una línea, no se publica un total parcial como margen del período.
+- Stock se informa por combinación presentación/sucursal: sin stock es cantidad cero (incluida una combinación todavía sin balance); bajo stock es cantidad positiva menor o igual al mínimo definido.
+- Caja muestra sesiones abiertas, efectivo esperado derivado y el último cierre/diferencia por sucursal; no reemplaza la pantalla operativa de Caja.
+- Staff recibe ventas, stock, ranking, medios de pago y caja operativa. No recibe costos, compras agregadas ni margen desde la base de datos.
+
 ## Decisiones pendientes
 
 - Fraccionamiento.

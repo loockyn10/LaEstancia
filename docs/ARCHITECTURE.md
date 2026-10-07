@@ -71,4 +71,11 @@ Los comandos efectivamente verificados se registran en `CURRENT_STATE.md`.
 - Supabase Storage cuando exista una necesidad concreta de archivos.
 - Reversión explícita de compras confirmadas; no se implementa cancelación con efectos inversos en el MVP.
 
+## Dashboard operativo aplicado y verificado remotamente
+
+- La migration `20261007010000_operational_dashboard.sql` define funciones `SECURITY DEFINER` pequeñas para resumen, medios de pago, ranking de productos y caja. Todas validan membresía, business y branch antes de agregar datos.
+- Las funciones agregan en PostgreSQL; el navegador sólo consume resultados acotados. Owner/admin reciben compras y margen; staff recibe `NULL` para esas métricas, además de conservar las políticas que bloquean las tablas de costos.
+- El margen usa `sale_items.line_total_cents` y el último `variant_cost_history` con `changed_at <= sales.created_at`. Por eso se etiqueta como histórico estimado: no hay un snapshot de costo por línea ni asignación FIFO/promedio.
+- La corrección versionada `20261007010100_dashboard_payment_methods_fix.sql` califica el agregado `totals.total_cents` dentro de la RPC, sin cambiar su contrato ni otras funciones.
+
 La configuración de navegador usa únicamente `VITE_SUPABASE_URL` y `VITE_SUPABASE_ANON_KEY`, cargadas desde el `.env.local` raíz mediante Vite. Nunca se usa `service_role` en el frontend. No se contempla offline-first inicialmente; tampoco Tauri, SQLite ni Docker.

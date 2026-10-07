@@ -12,6 +12,7 @@ import {
 } from "./lib/supabase";
 import { CatalogImport } from "./CatalogImport";
 import { Cash } from "./Cash";
+import { Dashboard } from "./Dashboard";
 import { Purchases, Suppliers } from "./Purchasing";
 import { Sales } from "./Sales";
 
@@ -346,7 +347,7 @@ function Sidebar({
   const path = window.location.pathname;
   const item = (href: string, text: string) => (
     <button
-      className={`nav-item ${path === href || path.startsWith(`${href}/`) || (href === "/" && path.startsWith("/products")) ? "selected" : ""}`}
+      className={`nav-item ${path === href || (href !== "/" && path.startsWith(`${href}/`)) ? "selected" : ""}`}
       onClick={() => navigate(href)}
       type="button"
     >
@@ -365,7 +366,8 @@ function Sidebar({
         </button>
         <p>{name}</p>
         <nav>
-          {item("/", "Productos")}
+          {item("/", "Dashboard")}
+          {item("/products", "Productos")}
           {item("/prices", "Precios")}
           {item("/stock", "Stock")}
           {item("/suppliers", "Proveedores")}
@@ -503,7 +505,9 @@ function Catalog({
   }, [load]);
   const path = window.location.pathname;
   let page: JSX.Element;
-  if (path === "/brands")
+  if (path === "/")
+    page = <Dashboard branches={branches} businessId={businessId} navigate={navigate} role={role} />;
+  else if (path === "/brands")
     page = (
       <References
         title="Marcas"
@@ -804,9 +808,9 @@ function Stock({
 }) {
   const [branches, setBranches] = useState<Branch[]>([]);
   const [balances, setBalances] = useState<Record<string, { quantity: number; minimumQuantity: number | null }>>({});
-  const [branchFilter, setBranchFilter] = useState("");
+  const [branchFilter, setBranchFilter] = useState(() => new URLSearchParams(window.location.search).get("branch") ?? "");
   const [query, setQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState(() => new URLSearchParams(window.location.search).get("status") ?? "all");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);

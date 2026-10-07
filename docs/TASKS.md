@@ -42,6 +42,11 @@
 - El dry-run mostró exclusivamente `20261007000000_cash_sessions.sql`; se aplicó la migration, se regeneró `packages/database/src/generated.ts` desde el esquema remoto y se verificó la matriz `supabase/tests/20261007_sprint10_cash_e2e.sql`.
 - La matriz cubrió apertura/cierre, efectivo esperado, ventas por medio de pago, movimientos manuales, permisos, aislamiento, asociación automática, inmutabilidad y append-only. Finalizó con rollback y una consulta posterior confirmó que no quedaron datos `sprint10`.
 
+## Resuelto — Sprint 11
+
+- Se aplicaron las migrations de Dashboard y su corrección focalizada de medios de pago; ambos dry-runs mostraron sólo los cambios esperados. Los tipos oficiales se regeneraron desde el esquema final.
+- La matriz `supabase/tests/20261007_sprint11_dashboard_e2e.sql` verificó agregados, filtros, stock, compras, caja, permisos, aislamiento y margen histórico con cantidades decimales. Finalizó mediante rollback y se confirmó que no quedaron fixtures `sprint11`.
+
 ## Riesgos
 
 - Diseñar prematuramente el modelo de producto, variantes o inventario puede cerrar decisiones de negocio aún abiertas.
