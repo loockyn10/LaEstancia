@@ -56,6 +56,14 @@ Stock y precios serán capacidades centrales. La UX debe priorizar simplicidad p
 - Cada `sale_item` conserva cantidad, precio unitario y subtotal vendidos en centavos. Para cantidades decimales, el subtotal de cada línea se redondea al centavo más cercano; cambios futuros de precio u oferta no alteran ese snapshot.
 - Una venta descuenta el saldo de la sucursal y registra un movimiento `sale` vinculado. La operación es atómica; los reintentos del mismo intento de cliente son idempotentes.
 
+## Caja operativa
+
+- Cada sesión de caja pertenece a una sucursal y un business; una sucursal admite como máximo una sesión abierta. Owner, admin y staff pueden abrir, operar y cerrar caja con el alcance de sucursales que permite el modelo actual de membresía del business.
+- Una venta nueva se vincula automáticamente a la sesión abierta de su sucursal cuando existe. Las ventas históricas y las ventas confirmadas sin una caja abierta permanecen válidas sin vínculo.
+- Los ingresos y egresos manuales son movimientos append-only con importe, motivo, autor y fecha. Los saldos no se mantienen mediante acumuladores editables.
+- El resumen separa efectivo, débito, crédito, transferencia y otros. El efectivo esperado es `efectivo inicial + ventas cash + ingresos manuales - egresos manuales`.
+- Al cerrar se guarda el efectivo contado, el esperado, la diferencia y un snapshot de ventas por medio de pago e ingresos/egresos. La sesión cerrada queda inmutable.
+
 ## Decisiones pendientes
 
 - Fraccionamiento.

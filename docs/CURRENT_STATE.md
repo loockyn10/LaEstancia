@@ -25,6 +25,8 @@
 - Las migrations `20261004029900_inventory_purchase_movement.sql`, `20261004030000_suppliers_purchases.sql` y la correctiva `20261004030100_confirm_purchase_column_resolution.sql` fueron aplicadas para Sprint 8. El backoffice incorpora Proveedores y Compras; `packages/database/src/generated.ts` fue regenerado oficialmente.
 
 - Las migrations `20261004040000_inventory_sale_movement.sql` y `20261004040100_sales_pos.sql`, más las correctivas `20261004040200_confirm_sale_column_resolution.sql`, `20261004040300_confirm_sale_idempotency_resolution.sql` y `20261004040400_record_inventory_movement_reject_sale.sql`, fueron aplicadas para Sprint 9. El backoffice incorpora Ventas, nueva venta POS e historial; `packages/database/src/generated.ts` fue regenerado oficialmente desde el esquema final.
+- La migration `supabase/migrations/20261007000000_cash_sessions.sql` incorpora sesiones de caja, movimientos append-only, snapshots de cierre, RLS/RPCs y vínculo nullable desde ventas. El backoffice incorpora Caja con apertura, resumen por medio de pago, ingresos/egresos, cierre e historial por sucursal.
+- `packages/database/src/generated.ts` fue regenerado oficialmente desde el esquema remoto aplicado de Sprint 10.
 
 ## Aplicado remotamente
 
@@ -38,6 +40,7 @@
 - Aplicadas mediante `supabase db push --linked` las migrations de Sprint 8. El dry-run inicial mostró únicamente `20261004029900` y `20261004030000`; el de la corrección posterior mostró exclusivamente `20261004030100`, sin seeds, roles ni cambios adicionales.
 
 - Aplicadas mediante `supabase db push --linked` las migrations de Sprint 9. El dry-run inicial mostró exclusivamente `20261004040000` y `20261004040100`; los dry-runs correctivos mostraron exclusivamente `20261004040200`, `20261004040300` y `20261004040400`, sin seeds, roles ni cambios adicionales.
+- Aplicada mediante `pnpm dlx supabase db push --linked` la migration `20261007000000_cash_sessions.sql`. Su dry-run mostró exclusivamente esa migration, sin seeds, roles ni cambios adicionales.
 
 ## Verificado remotamente
 
@@ -65,6 +68,8 @@
 - La matriz E2E autenticada de Sprint 8 verificó que el draft no modifica saldos ni costos; owner y admin confirman; cada confirmación crea un movimiento `purchase` vinculado, actualiza el costo al último costo de compra y genera historial. También verificó doble confirmación rechazada, rollback completo inducido en el segundo ítem, escritura/confirmación denegada a staff, inmutabilidad de confirmed y rechazo de supplier, branch y variant de otro business. La limpieza dejó cero businesses `sprint8`.
 
 - La matriz E2E autenticada de Sprint 9 verificó owner, admin y staff; precio base, oferta vigente y oferta futura; cantidades decimales; descuento de stock y movimiento `sale`; snapshot histórico tras cambiar el precio actual; rollback íntegro por stock insuficiente; rechazo de falta de precio y referencias cruzadas; inmutabilidad de completed; e idempotencia por request UUID. Sus businesses, usuarios, movimientos y demás datos `sprint9` se limpiaron al finalizar.
+- La matriz E2E autenticada de Sprint 10 verificó apertura con efectivo inicial, rechazo de segunda apertura, vínculo automático de cinco ventas nuevas a la caja abierta y separación de efectivo frente a débito/crédito/transferencia/otros. También verificó ingresos/egresos manuales, efectivo esperado, diferencia de cierre, doble cierre rechazado, inmutabilidad de sesión cerrada, movimientos append-only, permisos owner/admin/staff y aislamiento entre business/branch. La transacción revirtió sus fixtures y una consulta final confirmó cero usuarios, businesses, sesiones, movimientos y ventas `sprint10`.
+- Los tipos oficiales se regeneraron desde el esquema remoto final con las tablas, enums, relaciones y RPCs de caja en `packages/database/src/generated.ts`.
 
 ## Verificado localmente
 
@@ -83,6 +88,8 @@ Después de Sprint 7, `pnpm check` y `git diff --check` pasaron localmente. La a
 Después de Sprint 8, `pnpm check` y `git diff --check` volvieron a pasar con los tipos regenerados desde el esquema remoto aplicado.
 
 - Después de Sprint 9, `pnpm check` y `git diff --check` pasaron con los tipos regenerados desde el esquema remoto final.
+
+- Para Sprint 10, `pnpm check` y `git diff --check` pasan localmente después de aplicar la migration y regenerar tipos oficiales.
 
 ## Pendiente
 

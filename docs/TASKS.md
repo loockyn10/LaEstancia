@@ -37,6 +37,11 @@
 - Se aplicaron las migrations de ventas físicas, el movimiento `sale` y las tres correcciones versionadas de `confirm_sale`/movimientos; sus dry-runs no incluyeron cambios adicionales, seeds ni roles.
 - Se regeneró `packages/database/src/generated.ts` y la matriz `supabase/tests/20261004_sprint9_sales_e2e.sql` verificó roles, pricing, ofertas, stock, auditoría, snapshots, atomicidad, aislamiento, cantidades decimales, inmutabilidad e idempotencia. La transacción eliminó todos los datos aislados al finalizar.
 
+## Resuelto — Sprint 10
+
+- El dry-run mostró exclusivamente `20261007000000_cash_sessions.sql`; se aplicó la migration, se regeneró `packages/database/src/generated.ts` desde el esquema remoto y se verificó la matriz `supabase/tests/20261007_sprint10_cash_e2e.sql`.
+- La matriz cubrió apertura/cierre, efectivo esperado, ventas por medio de pago, movimientos manuales, permisos, aislamiento, asociación automática, inmutabilidad y append-only. Finalizó con rollback y una consulta posterior confirmó que no quedaron datos `sprint10`.
+
 ## Riesgos
 
 - Diseñar prematuramente el modelo de producto, variantes o inventario puede cerrar decisiones de negocio aún abiertas.

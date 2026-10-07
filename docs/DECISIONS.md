@@ -119,3 +119,11 @@
 **Motivo:** ni el precio ni el inventario pueden depender de escrituras coordinadas por React; una interrupción o reintento de red no debe cobrar o descontar dos veces.
 
 **Consecuencias:** owner/admin/staff pueden vender pero no escribir `sales`, `sale_items` ni balances directamente. Las cantidades admiten tres decimales; cada subtotal se redondea al centavo más cercano antes de almacenarse. No existen todavía cancelaciones de completed, devoluciones ni pagos divididos.
+
+## D016 — Caja derivada de eventos con snapshot de cierre
+
+**Decisión:** una caja abierta no mantiene totales editables. Su resumen se deriva de ventas vinculadas y movimientos manuales append-only; al cerrar, PostgreSQL calcula y guarda un snapshot inmutable. Las ventas se vinculan automáticamente sólo si hay una sesión abierta en su sucursal.
+
+**Motivo:** evitar divergencias entre POS, efectivo físico y acumuladores modificables, y hacer que apertura, venta, movimiento y cierre sean auditables y seguros ante concurrencia.
+
+**Consecuencias:** `sales.cash_session_id` es nullable para preservar ventas históricas y permitir ventas sin caja abierta. Sólo ventas `cash` integran el efectivo esperado; débito, crédito, transferencia y otros quedan en el resumen no físico. Los tres roles actuales operan las sucursales de su business porque todavía no existe asignación de membresía por branch.

@@ -57,6 +57,15 @@ Los comandos efectivamente verificados se registran en `CURRENT_STATE.md`.
 - `confirm_sale` es una RPC `SECURITY DEFINER` que admite owner/admin/staff, valida ownership, precio efectivo, cantidades e idempotency key; bloquea balances por variante en orden determinista, rechaza stock negativo y crea venta, ítems y movimientos en la misma transacción.
 - `sales` y `sale_items` sólo otorgan lectura bajo RLS por membresía activa; no hay escrituras directas de cliente. `list_sales` y `list_sale_items` entregan historial con autor y nombres comerciales sin abrir acceso general a perfiles.
 
+## Caja operativa aplicada y verificada remotamente
+
+- La migration `20261007000000_cash_sessions.sql` incorpora `cash_sessions` por business/sucursal y `cash_movements` append-only. Un índice parcial impide más de una caja abierta por sucursal y las foreign keys compuestas preservan ownership.
+- `open_cash_session`, `record_cash_movement` y `close_cash_session` son RPCs `SECURITY DEFINER` para owner/admin/staff. Validan membresía, business, branch, estado e importes; bloqueos advisory por sucursal serializan apertura/cierre con ventas y movimientos concurrentes.
+- `sales.cash_session_id` es nullable para no modificar ventas históricas. `confirm_sale` conserva su contrato e idempotencia y vincula ventas nuevas a la caja abierta de la misma sucursal cuando existe.
+- Los importes vivos se derivan de ventas y movimientos. El cierre guarda un snapshot por medio de pago, ingresos, egresos, efectivo esperado, contado y diferencia; triggers impiden mutar sesiones cerradas o editar/borrar movimientos.
+- RLS permite lectura a una membresía activa del business y no concede escrituras directas sobre caja. `list_cash_sessions` entrega el resumen operativo y los nombres de apertura/cierre sin ampliar el acceso a perfiles.
+- El dry-run remoto mostró exclusivamente `20261007000000_cash_sessions.sql`, que se aplicó al proyecto enlazado. La matriz `20261007_sprint10_cash_e2e.sql` verificó los flujos de caja, roles, aislamiento, inmutabilidad y limpieza mediante rollback; los tipos se regeneraron oficialmente desde ese esquema final.
+
 ## Propuesto / futuro
 
 - Supabase Storage cuando exista una necesidad concreta de archivos.

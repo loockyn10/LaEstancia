@@ -11,6 +11,7 @@ import {
   getSupabaseConfigurationError,
 } from "./lib/supabase";
 import { CatalogImport } from "./CatalogImport";
+import { Cash } from "./Cash";
 import { Purchases, Suppliers } from "./Purchasing";
 import { Sales } from "./Sales";
 
@@ -370,6 +371,7 @@ function Sidebar({
           {item("/suppliers", "Proveedores")}
           {item("/purchases", "Compras")}
           {item("/sales", "Ventas")}
+          {item("/cash", "Caja")}
           {item("/labels", "Etiquetas")}
           {item("/brands", "Marcas")}
           {item("/categories", "Categorías")}
@@ -377,7 +379,7 @@ function Sidebar({
         </nav>
       </div>
       <div className="sidebar-bottom">
-        <span>{role === "staff" ? "Solo consulta" : role}</span>
+        <span>{role === "staff" ? "Operador" : role}</span>
         <button className="signout" onClick={() => void logout()} type="button">
           Cerrar sesión
         </button>
@@ -554,6 +556,8 @@ function Catalog({
         products={products}
       />
     );
+  else if (path === "/cash")
+    page = <Cash branches={branches} businessId={businessId} />;
   else if (path === "/purchases" || path === "/purchases/new" || path.startsWith("/purchases/"))
     page = (
       <Purchases

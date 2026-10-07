@@ -12,6 +12,31 @@ export type Database = {
   __InternalSupabase: {
     PostgrestVersion: "14.18"
   }
+  graphql_public: {
+    Tables: {
+      [_ in never]: never
+    }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      graphql: {
+        Args: {
+          extensions?: Json
+          operationName?: string
+          query?: string
+          variables?: Json
+        }
+        Returns: Json
+      }
+    }
+    Enums: {
+      [_ in never]: never
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
+  }
   public: {
     Tables: {
       branches: {
@@ -130,6 +155,155 @@ export type Database = {
           name?: string
         }
         Relationships: []
+      }
+      cash_movements: {
+        Row: {
+          amount_cents: number
+          branch_id: string
+          business_id: string
+          cash_session_id: string
+          created_at: string
+          created_by: string
+          id: string
+          reason: string
+          type: Database["public"]["Enums"]["cash_movement_type"]
+        }
+        Insert: {
+          amount_cents: number
+          branch_id: string
+          business_id: string
+          cash_session_id: string
+          created_at?: string
+          created_by: string
+          id?: string
+          reason: string
+          type: Database["public"]["Enums"]["cash_movement_type"]
+        }
+        Update: {
+          amount_cents?: number
+          branch_id?: string
+          business_id?: string
+          cash_session_id?: string
+          created_at?: string
+          created_by?: string
+          id?: string
+          reason?: string
+          type?: Database["public"]["Enums"]["cash_movement_type"]
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cash_movements_cash_session_id_business_id_branch_id_fkey"
+            columns: ["cash_session_id", "business_id", "branch_id"]
+            isOneToOne: false
+            referencedRelation: "cash_sessions"
+            referencedColumns: ["id", "business_id", "branch_id"]
+          },
+          {
+            foreignKeyName: "cash_movements_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      cash_sessions: {
+        Row: {
+          branch_id: string
+          business_id: string
+          cash_sales_cents: number | null
+          closed_at: string | null
+          closed_by: string | null
+          counted_cash_cents: number | null
+          credit_sales_cents: number | null
+          debit_sales_cents: number | null
+          difference_cents: number | null
+          expected_cash_cents: number | null
+          id: string
+          inbound_cents: number | null
+          notes: string | null
+          opened_at: string
+          opened_by: string
+          opening_cash_cents: number
+          other_sales_cents: number | null
+          outbound_cents: number | null
+          status: Database["public"]["Enums"]["cash_session_status"]
+          transfer_sales_cents: number | null
+        }
+        Insert: {
+          branch_id: string
+          business_id: string
+          cash_sales_cents?: number | null
+          closed_at?: string | null
+          closed_by?: string | null
+          counted_cash_cents?: number | null
+          credit_sales_cents?: number | null
+          debit_sales_cents?: number | null
+          difference_cents?: number | null
+          expected_cash_cents?: number | null
+          id?: string
+          inbound_cents?: number | null
+          notes?: string | null
+          opened_at?: string
+          opened_by: string
+          opening_cash_cents: number
+          other_sales_cents?: number | null
+          outbound_cents?: number | null
+          status?: Database["public"]["Enums"]["cash_session_status"]
+          transfer_sales_cents?: number | null
+        }
+        Update: {
+          branch_id?: string
+          business_id?: string
+          cash_sales_cents?: number | null
+          closed_at?: string | null
+          closed_by?: string | null
+          counted_cash_cents?: number | null
+          credit_sales_cents?: number | null
+          debit_sales_cents?: number | null
+          difference_cents?: number | null
+          expected_cash_cents?: number | null
+          id?: string
+          inbound_cents?: number | null
+          notes?: string | null
+          opened_at?: string
+          opened_by?: string
+          opening_cash_cents?: number
+          other_sales_cents?: number | null
+          outbound_cents?: number | null
+          status?: Database["public"]["Enums"]["cash_session_status"]
+          transfer_sales_cents?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cash_sessions_branch_id_business_id_fkey"
+            columns: ["branch_id", "business_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id", "business_id"]
+          },
+          {
+            foreignKeyName: "cash_sessions_business_id_fkey"
+            columns: ["business_id"]
+            isOneToOne: false
+            referencedRelation: "businesses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cash_sessions_closed_by_fkey"
+            columns: ["closed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cash_sessions_opened_by_fkey"
+            columns: ["opened_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       categories: {
         Row: {
@@ -617,6 +791,7 @@ export type Database = {
         Row: {
           branch_id: string
           business_id: string
+          cash_session_id: string | null
           created_at: string
           created_by: string
           id: string
@@ -629,6 +804,7 @@ export type Database = {
         Insert: {
           branch_id: string
           business_id: string
+          cash_session_id?: string | null
           created_at?: string
           created_by: string
           id?: string
@@ -641,6 +817,7 @@ export type Database = {
         Update: {
           branch_id?: string
           business_id?: string
+          cash_session_id?: string | null
           created_at?: string
           created_by?: string
           id?: string
@@ -664,6 +841,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "businesses"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sales_cash_session_ownership_fkey"
+            columns: ["cash_session_id", "business_id", "branch_id"]
+            isOneToOne: false
+            referencedRelation: "cash_sessions"
+            referencedColumns: ["id", "business_id", "branch_id"]
           },
           {
             foreignKeyName: "sales_created_by_fkey"
@@ -960,6 +1144,26 @@ export type Database = {
           variant_id: string
         }[]
       }
+      close_cash_session: {
+        Args: {
+          counted_cash_cents: number
+          target_business_id: string
+          target_cash_session_id: string
+        }
+        Returns: {
+          cash_sales_cents: number
+          cash_session_id: string
+          closed_at: string
+          credit_sales_cents: number
+          debit_sales_cents: number
+          difference_cents: number
+          expected_cash_cents: number
+          inbound_cents: number
+          other_sales_cents: number
+          outbound_cents: number
+          transfer_sales_cents: number
+        }[]
+      }
       confirm_purchase: {
         Args: { target_business_id: string; target_purchase_id: string }
         Returns: {
@@ -1025,6 +1229,33 @@ export type Database = {
           variant_id: string
         }[]
       }
+      list_cash_sessions: {
+        Args: { target_branch_id?: string; target_business_id: string }
+        Returns: {
+          branch_id: string
+          branch_name: string
+          cash_sales_cents: number
+          closed_at: string
+          closed_by: string
+          closed_by_name: string
+          counted_cash_cents: number
+          credit_sales_cents: number
+          debit_sales_cents: number
+          difference_cents: number
+          expected_cash_cents: number
+          id: string
+          inbound_cents: number
+          notes: string
+          opened_at: string
+          opened_by: string
+          opened_by_name: string
+          opening_cash_cents: number
+          other_sales_cents: number
+          outbound_cents: number
+          status: Database["public"]["Enums"]["cash_session_status"]
+          transfer_sales_cents: number
+        }[]
+      }
       list_inventory_movements: {
         Args: {
           target_branch_id: string
@@ -1069,6 +1300,31 @@ export type Database = {
           total_cents: number
         }[]
       }
+      open_cash_session: {
+        Args: {
+          opening_cash_cents: number
+          session_notes?: string
+          target_branch_id: string
+          target_business_id: string
+        }
+        Returns: {
+          cash_session_id: string
+          opened_at: string
+        }[]
+      }
+      record_cash_movement: {
+        Args: {
+          amount_cents: number
+          movement_reason: string
+          movement_type: Database["public"]["Enums"]["cash_movement_type"]
+          target_business_id: string
+          target_cash_session_id: string
+        }
+        Returns: {
+          created_at: string
+          movement_id: string
+        }[]
+      }
       record_inventory_movement: {
         Args: {
           movement_note?: string
@@ -1099,6 +1355,8 @@ export type Database = {
     }
     Enums: {
       business_role: "owner" | "admin" | "staff"
+      cash_movement_type: "inbound" | "outbound"
+      cash_session_status: "open" | "closed"
       inventory_movement_type:
         | "initial"
         | "inbound"
@@ -1234,9 +1492,14 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
+  graphql_public: {
+    Enums: {},
+  },
   public: {
     Enums: {
       business_role: ["owner", "admin", "staff"],
+      cash_movement_type: ["inbound", "outbound"],
+      cash_session_status: ["open", "closed"],
       inventory_movement_type: [
         "initial",
         "inbound",
