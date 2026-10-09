@@ -27,6 +27,9 @@ export type DetectedSupplierProduct = {
   purchase_options: DetectedPurchaseOption[];
 };
 export type SupplierSpreadsheet = { sheetNames: string[]; sheets: Record<string, string[][]> };
+export type SupplierColumn = "name" | "presentation" | "supplier_code" | "barcode" | "cost" | "suggested_retail_price_cents" | "brand" | "category";
+export type SupplierColumnMapping = Partial<Record<SupplierColumn, number>>;
+export type SupplierHeaderDetection = { rowIndex: number; confidence: number; headers: string[]; mapping: SupplierColumnMapping };
 export type PdfTextPage = { page: number; text: string };
 export type VisualDetectedProduct = {
   name: string;
@@ -56,12 +59,13 @@ export const supplierListLimits = {
 } as const;
 
 const normalize = (value: string) => value.trim().replace(/\s+/g, " ").toLocaleLowerCase("es-AR");
-const aliases: Record<string, string[]> = {
+const folded = (value: string) => normalize(value).normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, " ").trim();
+const aliases: Record<SupplierColumn, string[]> = {
   name: ["producto", "nombre", "articulo", "artículo", "descripcion", "descripción"],
   presentation: ["presentacion", "presentación", "detalle"],
   supplier_code: ["codigo proveedor", "código proveedor", "codigo interno", "código interno", "codigo", "código"],
   barcode: ["ean", "barcode", "codigo barras", "código barras", "codigo de barras", "código de barras"],
-  cost: ["costo", "precio costo", "precio compra", "costo compra"],
+  cost: ["costo", "precio costo", "precio compra", "costo compra", "nueva lista precios", "nueva lista de precios", "precio"],
   suggested_retail_price_cents: ["pvp", "precio sugerido", "pvp sugerido", "precio venta sugerido"],
   brand: ["marca"], category: ["categoria", "categoría", "rubro"],
 };
@@ -75,10 +79,44 @@ export async function readSupplierSpreadsheet(file: File): Promise<SupplierSprea
   return { sheets, sheetNames };
 }
 
-function columnIndex(headers: string[], field: string) {
-  return headers.findIndex((header) => aliases[field].includes(normalize(header)));
+function columnIndex(headers: string[], field: SupplierColumn) {
+  const names = aliases[field].map(folded);
+  return headers.findIndex((header) => names.includes(folded(header)));
 }
 function at(row: string[], index: number) { return index < 0 ? "" : row[index]?.trim() ?? ""; }
+
+export function detectSupplierHeader(grid: string[][], maximumRows = 30): SupplierHeaderDetection {
+  const candidates = grid.slice(0, Math.max(1, maximumRows)).map((headers, rowIndex) => {
+    const mapping = Object.fromEntries((Object.keys(aliases) as SupplierColumn[]).map((field) => [field, columnIndex(headers, field)] as const).filter(([, index]) => index >= 0)) as SupplierColumnMapping;
+    const matched = Object.keys(mapping) as SupplierColumn[];
+    const score = matched.reduce((total, field) => total + (field === "name" || field === "cost" ? 3 : 2), 0);
+    return { rowIndex, confidence: score, headers, mapping };
+  });
+  const best = candidates.reduce((winner, candidate) => candidate.confidence > winner.confidence ? candidate : winner, candidates[0] ?? { rowIndex: 0, confidence: 0, headers: [], mapping: {} });
+  return best;
+}
+
+export function supplierColumnMapping(headers: string[]): SupplierColumnMapping {
+  return Object.fromEntries((Object.keys(aliases) as SupplierColumn[]).map((field) => [field, columnIndex(headers, field)] as const).filter(([, index]) => index >= 0)) as SupplierColumnMapping;
+}
+
+function parseSupplierMoneyCents(input: string): number | null {
+  const conventional = parseMoneyCents(input);
+  if (conventional !== null) return conventional;
+  const value = input.replace(/[$\s]/g, "");
+  // XLSX numeric cells occasionally arrive as binary floating-point tails
+  // (for example 8014.177500000001). Treat long fractional tails as a decimal
+  // number and round to cents, while the conventional parser keeps 1.234 as
+  // an Argentine thousands separator.
+  const match = value.match(/^(\d+)[.,](\d{3,})$/);
+  if (!match) return null;
+  const whole = BigInt(match[1]);
+  const fraction = match[2].padEnd(3, "0");
+  const cents = BigInt(fraction.slice(0, 2));
+  const rounded = cents + (fraction[2] >= "5" ? 1n : 0n);
+  const result = whole * 100n + rounded;
+  return result <= BigInt(Number.MAX_SAFE_INTEGER) ? Number(result) : null;
+}
 function parsePromo(value: string) {
   const match = value.match(/(?:promo(?:ción)?\s*)?(\d+)\s*\+\s*(\d+)/i);
   return match ? { paid: Number(match[1]), bonus: Number(match[2]) } : { paid: 1, bonus: 0 };
@@ -168,6 +206,12 @@ export function detectSupplierPdfText(pages: PdfTextPage[]): DetectedSupplierPro
   return detected;
 }
 
+/** Extracting selectable text is not proof that the PDF was understood. */
+export function shouldUseVisualPdfFallback(pages: PdfTextPage[], products: DetectedSupplierProduct[]) {
+  const purchasePriceSignals = pages.reduce((total, page) => total + (page.text.match(/(?:precio\s+(?:de\s+)?compra|precio\s+costo|costo)\s*[:$-]/gi)?.length ?? 0), 0);
+  return products.length === 0 || purchasePriceSignals > products.length;
+}
+
 export function toDetectedSupplierProducts(products: VisualDetectedProduct[]): DetectedSupplierProduct[] {
   return products.map((product) => ({
     name: product.name.trim(),
@@ -196,15 +240,24 @@ export function toDetectedSupplierProducts(products: VisualDetectedProduct[]): D
 
 /** Deterministic adapter for tabular supplier lists.  It intentionally never
  * guesses a catalogue match; that happens after staging, by stable code/EAN. */
-export function detectSupplierRows(grid: string[][], sheetName: string): DetectedSupplierProduct[] {
-  const [headers = [], ...rows] = grid;
-  const indexes = Object.fromEntries(Object.keys(aliases).map((field) => [field, columnIndex(headers, field)])) as Record<string, number>;
+export function detectSupplierRows(grid: string[][], sheetName: string, options?: { headerRowIndex?: number; mapping?: SupplierColumnMapping }): DetectedSupplierProduct[] {
+  const detection = detectSupplierHeader(grid);
+  const headerRowIndex = options?.headerRowIndex ?? detection.rowIndex;
+  const headers = grid[headerRowIndex] ?? [];
+  const mapping = options?.mapping ?? supplierColumnMapping(headers);
+  const indexes = Object.fromEntries((Object.keys(aliases) as SupplierColumn[]).map((field) => [field, mapping[field] ?? -1])) as Record<SupplierColumn, number>;
   if (indexes.name < 0) throw new Error("Mapeá o renombrá una columna de producto/nombre antes de continuar.");
-  return rows.flatMap((row, rowIndex) => {
+  let section: string | null = null;
+  return grid.slice(headerRowIndex + 1).flatMap((row, rowIndex) => {
+    const populated = row.filter((value) => value.trim());
+    const matchingHeaders = row.reduce((count, value, index) => count + (value && folded(value) === folded(headers[index] ?? "") ? 1 : 0), 0);
+    if (matchingHeaders >= 2) return [];
     const name = at(row, indexes.name);
     if (!name) return [];
     const costInput = at(row, indexes.cost);
-    const cost = parseMoneyCents(costInput);
+    const hasIdentifier = Boolean(at(row, indexes.supplier_code) || at(row, indexes.barcode));
+    if (populated.length === 1 && !costInput && !hasIdentifier) { section = name; return []; }
+    const cost = parseSupplierMoneyCents(costInput);
     const packaging = parsePackaging(`${name} ${at(row, indexes.presentation)}`);
     const promo = parsePromo(`${name} ${at(row, indexes.presentation)}`);
     const warnings = [packaging.warning, costInput && cost === null ? "Precio de compra inválido." : null].filter((value): value is string => Boolean(value));
@@ -216,9 +269,9 @@ export function detectSupplierRows(grid: string[][], sheetName: string): Detecte
       sku: null,
       barcode: at(row, indexes.barcode) || null,
       brand: at(row, indexes.brand) || null,
-      category: at(row, indexes.category) || null,
-      suggested_retail_price_cents: parseMoneyCents(at(row, indexes.suggested_retail_price_cents)),
-      source_reference: { sheet: sheetName, row: rowIndex + 2, source_text: row.filter(Boolean).join(" · ") },
+      category: at(row, indexes.category) || section,
+      suggested_retail_price_cents: parseSupplierMoneyCents(at(row, indexes.suggested_retail_price_cents)),
+      source_reference: { sheet: sheetName, row: headerRowIndex + rowIndex + 2, source_text: row.filter(Boolean).join(" · ") },
       warnings,
       confidence: warnings.length ? 0.65 : 0.95,
       purchase_options: cost === null ? [] : [{ supplier_code: at(row, indexes.supplier_code) || null, purchase_unit: packaging.unit, purchase_unit_label: packaging.label, stock_units_per_purchase: packaging.contents, purchase_price_cents: cost, units_paid: promo.paid, units_bonus: promo.bonus, is_selected: true }],

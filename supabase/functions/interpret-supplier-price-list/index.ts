@@ -186,5 +186,6 @@ Deno.serve(async (request) => {
   if (!raw || !Array.isArray(raw.products)) return errorResponse("invalid_visual_response", "OpenAI devolvió una respuesta sin schema válido.", 502);
   const products = raw.products.map(normalizeProduct);
   if (products.some((product) => product === null)) return errorResponse("invalid_visual_response", "OpenAI devolvió productos inválidos.", 502);
+  if (products.length === 0) return errorResponse("no_visual_candidates", "OpenAI no detectó productos utilizables en el archivo.", 422);
   return Response.json({ products }, { headers: corsHeaders });
 });
