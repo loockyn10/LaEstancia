@@ -8,6 +8,11 @@ type PurchaseOption = { supplierCode?: string; purchaseUnit?: PurchaseUnit; purc
 type Product = { name: string; presentation?: string; supplierCode?: string; barcode?: string; brand?: string; category?: string; suggestedRetailPriceCents?: number; purchaseOptions: PurchaseOption[]; source: { page?: number; regionOrReference?: string }; confidence: number; warnings: string[] };
 
 const supportedFormats = ["pdf", "jpg", "jpeg", "png"] as const;
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+};
 const cleanString = (value: unknown, max = 1000) => typeof value === "string" && value.trim().length > 0 && value.trim().length <= max ? value.trim() : null;
 const safeInteger = (value: unknown, allowZero = false) => typeof value === "number" && Number.isSafeInteger(value) && (allowZero ? value >= 0 : value > 0) ? value : null;
 
@@ -111,11 +116,12 @@ function outputText(response: unknown): { text?: string; refusal?: string } {
 }
 
 function errorResponse(code: string, error: string, status: number) {
-  return Response.json({ code, error }, { status });
+  return Response.json({ code, error }, { status, headers: corsHeaders });
 }
 
 Deno.serve(async (request) => {
-  if (request.method !== "POST") return new Response("Method not allowed", { status: 405 });
+  if (request.method === "OPTIONS") return new Response("ok", { status: 200, headers: corsHeaders });
+  if (request.method !== "POST") return new Response("Method not allowed", { status: 405, headers: corsHeaders });
   const authorization = request.headers.get("authorization");
   const url = Deno.env.get("SUPABASE_URL");
   const anonKey = Deno.env.get("SUPABASE_ANON_KEY");
@@ -123,7 +129,7 @@ Deno.serve(async (request) => {
   const openAiKey = Deno.env.get("OPENAI_API_KEY");
   const model = Deno.env.get("SUPPLIER_LISTS_AI_MODEL") || "gpt-5.6-luna";
   if (!url || !anonKey || !serviceRoleKey) return errorResponse("server_configuration_missing", "Supabase Edge Function incompleta.", 500);
-  if (!openAiKey) return Response.json({ code: "visual_interpretation_not_configured", error: "Interpretación visual no configurada.", missing: ["OPENAI_API_KEY"] }, { status: 503 });
+  if (!openAiKey) return Response.json({ code: "visual_interpretation_not_configured", error: "Interpretación visual no configurada.", missing: ["OPENAI_API_KEY"] }, { status: 503, headers: corsHeaders });
   if (!authorization) return errorResponse("unauthorized", "Sesión requerida.", 401);
 
   const body = await request.json().catch(() => null) as { business_id?: unknown; file_path?: unknown; mime_type?: unknown; file_format?: unknown } | null;
@@ -180,5 +186,5 @@ Deno.serve(async (request) => {
   if (!raw || !Array.isArray(raw.products)) return errorResponse("invalid_visual_response", "OpenAI devolvió una respuesta sin schema válido.", 502);
   const products = raw.products.map(normalizeProduct);
   if (products.some((product) => product === null)) return errorResponse("invalid_visual_response", "OpenAI devolvió productos inválidos.", 502);
-  return Response.json({ products });
+  return Response.json({ products }, { headers: corsHeaders });
 });

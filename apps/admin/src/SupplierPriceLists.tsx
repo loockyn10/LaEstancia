@@ -11,6 +11,43 @@ type UntypedResponse = { data: unknown; error: { message: string } | null };
 type UntypedQuery = PromiseLike<UntypedResponse> & { select: (...args: unknown[]) => UntypedQuery; eq: (...args: unknown[]) => UntypedQuery; order: (...args: unknown[]) => UntypedQuery; insert: (...args: unknown[]) => UntypedQuery; update: (...args: unknown[]) => UntypedQuery; delete: (...args: unknown[]) => UntypedQuery; single: () => UntypedQuery };
 type UntypedDatabaseClient = { from: (table: string) => UntypedQuery; rpc: (fn: string, args: Record<string, unknown>) => Promise<UntypedResponse> };
 type FunctionClient = { functions: { invoke: (name: string, options: { body: Record<string, unknown> }) => Promise<{ data: unknown; error: { message: string; context?: Response } | null }> } };
+
+function firstErrorMessage(value: unknown): string | null {
+  if (!value || typeof value !== "object") return null;
+  const object = value as Record<string, unknown>;
+  for (const key of ["error", "message", "msg"]) {
+    if (typeof object[key] === "string" && object[key].trim()) return object[key].trim();
+  }
+  return null;
+}
+
+async function describeFunctionError(error: { message?: unknown; context?: unknown }): Promise<string> {
+  const context = error.context;
+  if (context instanceof Response) {
+    const text = await context.text().catch(() => "");
+    if (text.trim()) {
+      try {
+        const body = JSON.parse(text) as unknown;
+        return firstErrorMessage(body) ?? text.trim();
+      } catch {
+        return text.trim();
+      }
+    }
+  } else if (context && typeof context === "object") {
+    const contextObject = context as Record<string, unknown>;
+    const body = contextObject.body;
+    if (typeof body === "string" && body.trim()) {
+      try {
+        const parsed = JSON.parse(body) as unknown;
+        return firstErrorMessage(parsed) ?? body.trim();
+      } catch {
+        return body.trim();
+      }
+    }
+    return firstErrorMessage(body) ?? firstErrorMessage(contextObject) ?? String(error.message ?? "");
+  }
+  return typeof error.message === "string" ? error.message : "";
+}
 const manager = (role: Role) => role === "owner" || role === "admin";
 const money = (cents: number | null) => cents === null ? "—" : new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS", maximumFractionDigits: cents % 100 ? 2 : 0 }).format(cents / 100);
 const extension = (name: string) => name.split(".").pop()?.toLowerCase() ?? "";
@@ -76,8 +113,7 @@ export function SupplierPriceLists({ businessId, role, variants }: { businessId:
       setProgress(`Interpretando ${file.type === "application/pdf" ? "PDF completo" : "imagen"}…`);
       const invoke = await (draft.client as unknown as FunctionClient).functions.invoke("interpret-supplier-price-list", { body: { business_id: businessId, file_path: draft.path, mime_type: file.type || "application/octet-stream", file_format: draft.format } });
       if (invoke.error) {
-        const detail = invoke.error.context ? await invoke.error.context.json().catch(() => null) as { error?: string } | null : null;
-        throw new Error(detail?.error ?? invoke.error.message);
+        throw new Error(await describeFunctionError(invoke.error));
       }
       const response = invoke.data as { products?: VisualDetectedProduct[] } | null;
       if (!response || !Array.isArray(response.products)) throw new Error("La interpretación visual devolvió una respuesta inválida.");
