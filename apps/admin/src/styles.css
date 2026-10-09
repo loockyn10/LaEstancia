@@ -84,6 +84,7 @@ small { color: #65777c; }
 .import-summary { display: flex; flex-wrap: wrap; gap: .6rem; align-items: center; }
 .import-summary span, .import-summary strong { padding: .4rem .65rem; border-radius: 999px; background: #edf3f2; font-size: .85rem; }
 .import-summary strong { background: #12333f; color: #fff; }
+.matching-actions { flex-wrap: wrap; margin: .8rem 0; }
 .invalid-count { background: #fce8e6 !important; color: #b42318; }
 .import-status { display: inline-block; border-radius: 999px; padding: .25rem .55rem; font-size: .76rem; font-weight: 750; }
 .import-status.new { background: #e9f4e8; color: #267048; }
