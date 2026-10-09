@@ -135,3 +135,11 @@
 **Motivo:** evitar descargar historial al navegador, respetar el aislamiento RLS y impedir que un cambio posterior de costo reescriba conceptualmente una venta anterior.
 
 **Consecuencias:** ventas usan sus snapshots de línea; compras sólo incluyen `confirmed`; el margen se publica sólo cuando todas las líneas tienen un costo histórico aplicable y se etiqueta como estimado. Owner/admin lo reciben desde backend; staff no recibe costos, compras agregadas ni margen. No se implementan costo promedio, FIFO, LIFO ni contabilidad.
+
+## D018 — Listas de proveedor separadas del catálogo y con revisión obligatoria
+
+**Decisión:** almacenar cada archivo de proveedor y sus ofertas como datos auditables separados; aplicar costos únicamente después de revisión humana y una RPC transaccional.
+
+**Motivo:** un precio listado, un barcode o una inferencia visual no son autoridad para cambiar catálogo, ventas o stock. Las opciones de compra pueden compartir EAN y diferir en código, contenido o bonificación.
+
+**Consecuencias:** `supplier_code` es el vínculo persistente prioritario; barcode sólo propone matching. El costo efectivo se calcula con pagadas, bonificadas y contenido, el PVP queda informativo y el precio de venta no se actualiza. La interpretación visual exige una frontera server-side configurada y nunca escribe directamente.

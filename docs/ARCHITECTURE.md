@@ -51,6 +51,12 @@ Los comandos efectivamente verificados se registran en `CURRENT_STATE.md`.
 - Se agrega el movimiento `purchase` como entrada auditable. El cliente no tiene escritura directa sobre balances o movimientos; tampoco puede confirmar una compra por updates independientes.
 - RLS habilita lectura de proveedores y encabezados de compras para staff, sin exponer los ítems ni costos. Owner/admin crean y modifican únicamente borradores; compras confirmadas o canceladas no pueden volver a editarse mediante las políticas ni desde el frontend.
 
+## Listas de proveedores (pendiente de aplicación remota)
+
+- La migration `20261008000000_supplier_price_lists.sql` versiona listas privadas, vínculos persistentes por código de proveedor, ítems detectados y opciones de compra. El costo efectivo es una columna generada y las RPCs de staging/aplicación validan rol y ownership dentro de una transacción.
+- La aplicación no actualiza stock ni precio de venta. Sólo al confirmar una lista, el costo seleccionado se escribe mediante `variant_costs`, preservando el historial existente; la lista queda inmutable y auditable.
+- Los originales usan el bucket privado `supplier-price-lists`, con prefijo de `business_id` y policies de Storage por membresía. PDF/JPG/PNG quedan detrás de una Edge Function que sólo devuelve DTOs validados y requiere secretos server-side; no tiene autoridad para escribir la base.
+
 ## Ventas / POS aplicados y verificados remotamente
 
 - Las migrations `20261004040000_inventory_sale_movement.sql` y `20261004040100_sales_pos.sql` incorporan el movimiento `sale`, `sales`, `sale_items`, los enums de estado y medio de pago, y enlaces auditables entre movimiento y venta. Las correctivas `20261004040200_confirm_sale_column_resolution.sql` y `20261004040300_confirm_sale_idempotency_resolution.sql` califican el valor retornado y preservan correctamente el total inicial de una venta nueva; `20261004040400_record_inventory_movement_reject_sale.sql` reserva el movimiento `sale` para `confirm_sale`.

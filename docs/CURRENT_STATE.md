@@ -99,6 +99,8 @@ Después de Sprint 8, `pnpm check` y `git diff --check` volvieron a pasar con lo
 
 ## Pendiente
 
+- La implementación local de Listas de proveedores está versionada en `20261008000000_supplier_price_lists.sql`, pero no está aplicada ni tiene tipos generados: el dry-run contra el proyecto enlazado devolvió 403 por privilegios de cuenta. No se ejecutó `db push`, E2E remoto ni regeneración oficial de `generated.ts`.
+
 Definir el flujo administrativo para altas y gestión de usuarios reales y memberships en un sprint posterior. La migration no incluye policies de escritura de cliente.
 
 Clientes y ecommerce permanecen fuera de este alcance. Para compras queda pendiente el flujo de reversión de una compra confirmada; para ventas, devolución/reversión de una venta completed y pagos divididos.

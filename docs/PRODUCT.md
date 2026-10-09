@@ -39,6 +39,14 @@ Stock y precios serán capacidades centrales. La UX debe priorizar simplicidad p
 - Al confirmar, PostgreSQL registra un movimiento de inventario `purchase` por ítem, actualiza el costo actual y deja el historial oficial de costo. En el MVP el costo actual es el **último costo de compra**, no costo promedio, FIFO ni LIFO.
 - Una compra confirmada es inmutable. No se revierte ni se vuelve a borrador: ese flujo será un trabajo posterior.
 
+## Listas de proveedores
+
+- Una lista de proveedor es un archivo comercial recibido, no una compra ni una actualización automática del catálogo. Conserva su original privado, proveedor, formato, fecha, estado y referencias de origen por hoja/fila o página cuando existen.
+- El producto de La Estancia y la oferta de un proveedor son entidades diferentes. Una oferta puede tener varias opciones de compra; un barcode ayuda a reconocer una presentación, pero nunca identifica por sí solo una opción de compra.
+- Las opciones registran unidad de compra, contenido de stock, precio, unidades pagadas y bonificadas. El costo efectivo unitario se calcula como `precio × pagadas / ((pagadas + bonificadas) × contenido)` y se revisa antes de aplicar.
+- El PVP sugerido por el proveedor es informativo: no modifica el precio de venta de La Estancia.
+- Owner/admin revisan matching, correcciones y preview antes de aplicar mediante una operación de backend auditable. El `supplier_code` confirmado queda vinculado a la presentación para reconocer listas futuras. Staff sólo puede consultar encabezados, sin acceso a costos.
+
 ## Importación de catálogo
 
 - Owner y admin pueden importar un `.xlsx` o `.csv`; staff no ve la sección ni puede ejecutar la RPC.

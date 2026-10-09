@@ -15,6 +15,7 @@ import { Cash } from "./Cash";
 import { Dashboard } from "./Dashboard";
 import { Purchases, Suppliers } from "./Purchasing";
 import { Sales } from "./Sales";
+import { SupplierPriceLists } from "./SupplierPriceLists";
 
 type Role = "owner" | "admin" | "staff";
 type Access =
@@ -371,6 +372,7 @@ function Sidebar({
           {item("/prices", "Precios")}
           {item("/stock", "Stock")}
           {item("/suppliers", "Proveedores")}
+          {item("/supplier-price-lists", "Listas de proveedores")}
           {item("/purchases", "Compras")}
           {item("/sales", "Ventas")}
           {item("/cash", "Caja")}
@@ -550,6 +552,18 @@ function Catalog({
     );
   else if (path === "/suppliers")
     page = <Suppliers businessId={businessId} role={role} />;
+  else if (path === "/supplier-price-lists")
+    page = (
+      <SupplierPriceLists
+        businessId={businessId}
+        role={role}
+        variants={products.flatMap((product) => product.variants.map((variant) => ({
+          id: variant.id ?? "",
+          label: `${product.name} · ${variant.name}`,
+          barcode: variant.barcodes.find((barcode) => barcode.is_primary)?.code ?? variant.barcodes[0]?.code ?? "",
+        })).filter((variant) => Boolean(variant.id)))}
+      />
+    );
   else if (path === "/sales" || path === "/sales/new" || path.startsWith("/sales/"))
     page = (
       <Sales
