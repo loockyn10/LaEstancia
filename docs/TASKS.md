@@ -6,7 +6,7 @@
 - Diseñar devolución/reversión auditable de ventas completed.
 - Definir pagos divididos cuando el flujo de caja lo requiera.
 - Aplicar y verificar remotamente la migration de Listas de proveedores (`20261008000000_supplier_price_lists.sql`), regenerar tipos y ejecutar una matriz aislada. El dry-run remoto quedó bloqueado por permisos de la cuenta de Supabase (403), por lo que no se aplicó ningún cambio remoto.
-- Antes de habilitar importación visual en producción, configurar `SUPPLIER_LISTS_AI_URL` y `SUPPLIER_LISTS_AI_API_KEY` como secretos de la Edge Function, y completar extracción determinística de imágenes ancladas en XLSX. La dependencia actual `read-excel-file` lee celdas/hojas pero no expone drawings/media anclados.
+- Antes de habilitar importación visual en producción, desplegar `interpret-supplier-price-list` y configurar `SUPPLIER_LISTS_AI_URL` y `SUPPLIER_LISTS_AI_API_KEY` con un proveedor que implemente el contrato `supplier_price_list_candidates_v1`. La extracción determinística de imágenes ancladas en XLSX continúa pendiente: `read-excel-file` lee celdas/hojas pero no expone drawings/media anclados.
 
 ## Resuelto — Sprint 1
 

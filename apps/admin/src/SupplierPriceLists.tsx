@@ -1,6 +1,6 @@
 import { type ChangeEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { getSupabaseClient } from "./lib/supabase";
-import { detectSupplierRows, readSupplierSpreadsheet, type DetectedSupplierProduct, type SupplierSpreadsheet, visualInterpretationMessage } from "./supplier-price-list-import";
+import { detectSupplierPdfText, detectSupplierRows, extractPdfTextPages, readSupplierSpreadsheet, supplierListLimits, toDetectedSupplierProducts, type DetectedSupplierProduct, type PdfTextPage, type SupplierSpreadsheet, type VisualDetectedProduct, visualInterpretationMessage } from "./supplier-price-list-import";
 
 type Role = "owner" | "admin" | "staff";
 type Supplier = { id: string; name: string; is_active: boolean };
@@ -10,14 +10,15 @@ type Item = { id: string; detected_name: string; detected_presentation: string |
 type UntypedResponse = { data: unknown; error: { message: string } | null };
 type UntypedQuery = PromiseLike<UntypedResponse> & { select: (...args: unknown[]) => UntypedQuery; eq: (...args: unknown[]) => UntypedQuery; order: (...args: unknown[]) => UntypedQuery; insert: (...args: unknown[]) => UntypedQuery; update: (...args: unknown[]) => UntypedQuery; delete: (...args: unknown[]) => UntypedQuery; single: () => UntypedQuery };
 type UntypedDatabaseClient = { from: (table: string) => UntypedQuery; rpc: (fn: string, args: Record<string, unknown>) => Promise<UntypedResponse> };
+type FunctionClient = { functions: { invoke: (name: string, options: { body: Record<string, unknown> }) => Promise<{ data: unknown; error: { message: string; context?: Response } | null }> } };
 const manager = (role: Role) => role === "owner" || role === "admin";
 const money = (cents: number | null) => cents === null ? "—" : new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS", maximumFractionDigits: cents % 100 ? 2 : 0 }).format(cents / 100);
 const extension = (name: string) => name.split(".").pop()?.toLowerCase() ?? "";
 
 export function SupplierPriceLists({ businessId, role, variants }: { businessId: string; role: Role; variants: Variant[] }) {
   const [suppliers, setSuppliers] = useState<Supplier[]>([]); const [lists, setLists] = useState<List[]>([]); const [selected, setSelected] = useState<List | null>(null); const [items, setItems] = useState<Item[]>([]);
-  const [supplierId, setSupplierId] = useState(""); const [file, setFile] = useState<File | null>(null); const [spreadsheet, setSpreadsheet] = useState<SupplierSpreadsheet | null>(null); const [sheetName, setSheetName] = useState(""); const [detected, setDetected] = useState<DetectedSupplierProduct[] | null>(null);
-  const [error, setError] = useState<string | null>(null); const [notice, setNotice] = useState<string | null>(null); const [busy, setBusy] = useState(false);
+  const [supplierId, setSupplierId] = useState(""); const [file, setFile] = useState<File | null>(null); const [spreadsheet, setSpreadsheet] = useState<SupplierSpreadsheet | null>(null); const [sheetName, setSheetName] = useState(""); const [pdfPages, setPdfPages] = useState<PdfTextPage[] | null>(null); const [detected, setDetected] = useState<DetectedSupplierProduct[] | null>(null);
+  const [error, setError] = useState<string | null>(null); const [notice, setNotice] = useState<string | null>(null); const [progress, setProgress] = useState<string | null>(null); const [busy, setBusy] = useState(false);
   const editable = manager(role);
   const load = useCallback(async () => {
     const client = getSupabaseClient(); if (!client) return;
@@ -36,14 +37,67 @@ export function SupplierPriceLists({ businessId, role, variants }: { businessId:
     if (loadError) return setError("No pudimos cargar los productos detectados."); setItems((data as Item[] | null) ?? []);
   }
   async function chooseFile(event: ChangeEvent<HTMLInputElement>) {
-    const next = event.target.files?.[0] ?? null; setFile(next); setSpreadsheet(null); setDetected(null); setError(null); setNotice(null);
+    const next = event.target.files?.[0] ?? null; setFile(next); setSpreadsheet(null); setPdfPages(null); setDetected(null); setError(null); setNotice(null); setProgress(null);
     if (!next) return; const format = extension(next.name);
     if (!["csv", "xlsx", "pdf", "jpg", "jpeg", "png"].includes(format)) { setFile(null); return setError("Elegí CSV, XLSX, PDF, JPG, JPEG o PNG."); }
+    if (next.size > supplierListLimits.maxFileBytes) { setFile(null); return setError("La lista supera el límite de 20 MB."); }
     if (format === "csv" || format === "xlsx") try { const book = await readSupplierSpreadsheet(next); setSpreadsheet(book); setSheetName(book.sheetNames[0]); } catch (readError) { setError(readError instanceof Error ? readError.message : "No pudimos leer el archivo."); }
+    else if (format === "pdf") try { const pages = await extractPdfTextPages(next, (current, total) => setProgress(`Leyendo texto de página ${current} de ${total}…`)); setPdfPages(pages); setProgress(null); setNotice(`PDF · ${pages.length} páginas. Se intentará interpretar texto seleccionable antes de usar visión.`); } catch (readError) { setError(readError instanceof Error ? readError.message : "No pudimos leer el PDF."); setProgress(null); }
     else setNotice(visualInterpretationMessage(format));
   }
-  function interpret() {
-    if (!spreadsheet || !sheetName) return; try { const next = detectSupplierRows(spreadsheet.sheets[sheetName], sheetName); setDetected(next); setError(null); } catch (interpretError) { setError(interpretError instanceof Error ? interpretError.message : "No pudimos interpretar la hoja."); }
+  async function interpret() {
+    if (spreadsheet && sheetName) try { const next = detectSupplierRows(spreadsheet.sheets[sheetName], sheetName); setDetected(next); setError(null); setNotice(`${next.length} productos detectados determinísticamente.`); return; } catch (interpretError) { setError(interpretError instanceof Error ? interpretError.message : "No pudimos interpretar la hoja."); return; }
+    if (pdfPages) {
+      const next = detectSupplierPdfText(pdfPages);
+      if (next.length) { setDetected(next); setNotice(`${next.length} productos detectados desde texto seleccionable. Revisá la muestra antes de guardar.`); return; }
+    }
+    await interpretVisually();
+  }
+
+  async function createDraftAndUpload() {
+    if (!file || !supplierId) throw new Error("Elegí proveedor y archivo antes de continuar.");
+    const client = getSupabaseClient(); if (!client) throw new Error("Falta configurar Supabase.");
+    const db = client as unknown as UntypedDatabaseClient; const { data: session } = await client.auth.getUser(); if (!session.user) throw new Error("Tu sesión ya no está disponible.");
+    const id = crypto.randomUUID(); const format = extension(file.name); const path = `${businessId}/${id}/original.${format}`;
+    const header = await db.from("supplier_price_lists").insert({ id, business_id: businessId, supplier_id: supplierId, file_name: file.name, file_path: path, file_format: format, mime_type: file.type || "application/octet-stream", created_by: session.user.id }).select("id,supplier_id,file_name,file_format,list_date,status,created_at").single();
+    if (header.error || !header.data) throw new Error("No pudimos crear el borrador de la lista.");
+    const upload = await client.storage.from("supplier-price-lists").upload(path, file, { upsert: false, contentType: file.type || undefined });
+    if (upload.error) { await db.from("supplier_price_lists").delete().eq("id", id).eq("business_id", businessId); throw new Error("No pudimos conservar el archivo original."); }
+    return { client, db, id, path, format, header: header.data as List };
+  }
+
+  async function interpretVisually() {
+    if (!file || !supplierId) return setError("Elegí proveedor y archivo antes de interpretar.");
+    setBusy(true); setError(null); setNotice(null); setProgress("Preparando archivo para interpretación visual…");
+    let draft: Awaited<ReturnType<typeof createDraftAndUpload>> | null = null;
+    const candidates: DetectedSupplierProduct[] = [];
+    try {
+      draft = await createDraftAndUpload();
+      const allPages = pdfPages?.map((page) => page.page) ?? [1];
+      for (let index = 0; index < allPages.length; index += supplierListLimits.visualBatchPages) {
+        const pageNumbers = allPages.slice(index, index + supplierListLimits.visualBatchPages);
+        setProgress(`Interpretando ${file.type === "application/pdf" ? `páginas ${pageNumbers[0]}–${pageNumbers[pageNumbers.length - 1]} de ${allPages.length}` : "imagen"}…`);
+        const invoke = await (draft.client as unknown as FunctionClient).functions.invoke("interpret-supplier-price-list", { body: { business_id: businessId, file_path: draft.path, mime_type: file.type || "application/octet-stream", file_format: draft.format, page_numbers: pageNumbers, text_pages: (pdfPages ?? []).filter((page) => pageNumbers.includes(page.page)) } });
+        if (invoke.error) {
+          const detail = invoke.error.context ? await invoke.error.context.json().catch(() => null) as { error?: string } | null : null;
+          throw new Error(detail?.error ?? invoke.error.message);
+        }
+        const response = invoke.data as { products?: VisualDetectedProduct[] } | null;
+        if (!response || !Array.isArray(response.products)) throw new Error("La interpretación visual devolvió una respuesta inválida.");
+        candidates.push(...toDetectedSupplierProducts(response.products));
+      }
+      if (!candidates.length) throw new Error("No se detectaron productos. Revisá el archivo o corregí manualmente la lista.");
+      const saved = await draft.db.rpc("save_supplier_price_list_items", { target_business_id: businessId, target_price_list_id: draft.id, detected_items: candidates });
+      if (saved.error) throw new Error(`El archivo quedó como borrador, pero no se pudieron guardar los productos: ${saved.error.message}`);
+      await load(); await loadItems(draft.header); setNotice(`${candidates.length} productos detectados. Revisá matching y opciones antes de aplicar.`);
+    } catch (interpretError) {
+      if (draft && candidates.length) {
+        const saved = await draft.db.rpc("save_supplier_price_list_items", { target_business_id: businessId, target_price_list_id: draft.id, detected_items: candidates });
+        if (!saved.error) { await load(); await loadItems(draft.header); setNotice(`${candidates.length} productos detectados antes del error. Podés revisarlos; las páginas restantes requieren reintento.`); }
+      }
+      setError(interpretError instanceof Error ? interpretError.message : "No pudimos interpretar visualmente el archivo.");
+    }
+    finally { setBusy(false); setProgress(null); }
   }
   async function stage() {
     if (!file || !supplierId) return setError("Elegí proveedor y archivo antes de continuar.");
@@ -76,15 +130,16 @@ export function SupplierPriceLists({ businessId, role, variants }: { businessId:
   }
   if (!editable) return <section className="state-box"><h2>Listas de proveedores</h2><p>Podés consultar las listas disponibles; el detalle de costos y la aplicación están reservados a owner y admin.</p></section>;
   return <><header className="page-header"><div><p className="eyebrow">Compras</p><h1>Listas de proveedores</h1><p className="subtle">El archivo se conserva y cada lista se revisa antes de cambiar costos. El PVP sugerido nunca cambia el precio de venta.</p></div></header>
-    <section className="form-section import-panel"><h2>1. Importar lista</h2><div className="grid"><label>Proveedor<select value={supplierId} onChange={(event) => setSupplierId(event.target.value)}><option value="">Elegí un proveedor</option>{suppliers.filter((supplier) => supplier.is_active).map((supplier) => <option key={supplier.id} value={supplier.id}>{supplier.name}</option>)}</select></label><label>Archivo<input accept=".csv,.xlsx,.pdf,.jpg,.jpeg,.png,text/csv,application/pdf,image/jpeg,image/png,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" onChange={(event) => void chooseFile(event)} type="file" /></label></div>
-      {spreadsheet && <><label>Hoja<select value={sheetName} onChange={(event) => { setSheetName(event.target.value); setDetected(null); }}>{spreadsheet.sheetNames.map((name) => <option key={name} value={name}>{name}</option>)}</select></label><div className="form-actions"><button onClick={interpret} type="button">Interpretar hoja</button></div></>}
-      {file && !spreadsheet && <div className="form-actions"><button disabled={busy} onClick={() => void stage()} type="button">{busy ? "Guardando…" : "Guardar para interpretación visual"}</button></div>}
+    <section className="form-section import-panel"><h2>1. Importar lista</h2><div className="grid"><label>Proveedor<select value={supplierId} onChange={(event) => setSupplierId(event.target.value)}><option value="">Elegí un proveedor</option>{suppliers.filter((supplier) => supplier.is_active).map((supplier) => <option key={supplier.id} value={supplier.id}>{supplier.name}</option>)}</select></label><label>Lista de proveedor<input accept=".csv,.xlsx,.pdf,.jpg,.jpeg,.png,text/csv,application/pdf,image/jpeg,image/png,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" onChange={(event) => void chooseFile(event)} type="file" /></label></div>
+      {file && <p className="muted">{file.name} · {extension(file.name).toUpperCase()}{pdfPages ? ` · ${pdfPages.length} páginas` : ""}</p>}
+      {spreadsheet && <><label>Hoja<select value={sheetName} onChange={(event) => { setSheetName(event.target.value); setDetected(null); }}>{spreadsheet.sheetNames.map((name) => <option key={name} value={name}>{name}</option>)}</select></label><div className="form-actions"><button disabled={busy} onClick={() => void interpret()} type="button">Interpretar hoja</button></div></>}
+      {file && !spreadsheet && <div className="form-actions"><button disabled={busy} onClick={() => void interpret()} type="button">{busy ? "Interpretando…" : "Interpretar lista"}</button></div>}
       {detected && <><p className="notice">{detected.length} productos detectados determinísticamente. Revisá la muestra antes de guardar.</p><div className="table-wrap"><table><thead><tr><th>Producto</th><th>Código</th><th>EAN</th><th>Costo</th><th>Condición</th><th>Advertencias</th></tr></thead><tbody>{detected.slice(0, 12).map((item, index) => { const option = item.purchase_options[0]; return <tr key={index}><td>{item.name}<br /><small>{item.presentation}</small></td><td>{item.supplier_code ?? "—"}</td><td>{item.barcode ?? "—"}</td><td>{money(option?.purchase_price_cents ?? null)}</td><td>{option ? `${option.purchase_unit_label ?? "unidad"} · paga ${option.units_paid}${option.units_bonus ? ` + ${option.units_bonus}` : ""}` : "—"}</td><td>{item.warnings.join(" ") || "—"}</td></tr>; })}</tbody></table></div><div className="form-actions"><button disabled={busy} onClick={() => void stage()} type="button">{busy ? "Guardando…" : "Guardar para revisión"}</button></div></>}
     </section>
     <section className="list-section"><h2>Listas recibidas</h2>{!lists.length ? <p className="empty">Todavía no hay listas de proveedores.</p> : <div className="table-wrap"><table><thead><tr><th>Proveedor</th><th>Archivo</th><th>Fecha</th><th>Estado</th><th /></tr></thead><tbody>{lists.map((list) => <tr key={list.id}><td>{supplierName(list.supplier_id)}</td><td>{list.file_name}</td><td>{list.list_date ?? new Intl.DateTimeFormat("es-AR").format(new Date(list.created_at))}</td><td><span className="badge">{list.status === "draft" ? "Borrador" : list.status === "reviewed" ? "Revisar" : "Aplicada"}</span></td><td><button className="link-button" onClick={() => void loadItems(list)} type="button">{list.status === "applied" ? "Ver" : "Revisar"}</button></td></tr>)}</tbody></table></div>}</section>
     {selected && <section className="form-section import-panel"><div className="section-header"><div><p className="eyebrow">{supplierName(selected.supplier_id)}</p><h2>2. Matching y preview</h2><p>Los códigos de proveedor quedan vinculados para la próxima lista. Un barcode sólo ayuda a identificar la presentación; no identifica una opción de compra.</p></div></div><div className="import-summary"><strong>{metrics.total} detectados</strong><span>{metrics.linked} relacionados</span><span className={metrics.review ? "invalid-count" : ""}>{metrics.review} por resolver</span></div>
       {!items.length ? <p className="notice">Esta lista aún no tiene productos interpretados. PDF e imágenes requieren la integración visual configurada.</p> : <div className="table-wrap"><table><thead><tr><th>Producto / origen</th><th>Opción de compra</th><th>Costo efectivo</th><th>Matching</th><th>Aplicar</th></tr></thead><tbody>{items.map((item) => { const option = item.supplier_purchase_options.find((entry) => entry.is_selected) ?? item.supplier_purchase_options[0]; return <tr key={item.id}><td><strong>{item.detected_name}</strong><br /><small>{item.detected_presentation ?? "—"} · código: {item.supplier_code ?? "—"} · EAN: {item.barcode ?? "—"}</small>{item.warnings.length > 0 && <small className="danger"><br />{item.warnings.join(" ")}</small>}</td><td>{option ? `${option.purchase_unit} x${option.stock_units_per_purchase} · paga ${option.units_paid}${option.units_bonus ? ` + ${option.units_bonus}` : ""}` : "Inválida"}<br /><small>Compra: {money(option?.purchase_price_cents ?? null)}</small></td><td>{money(option?.effective_unit_cost_cents ?? null)}</td><td>{selected.status === "applied" ? variants.find((variant) => variant.id === item.product_variant_id)?.label ?? "—" : <><select value={item.product_variant_id ?? ""} onChange={(event) => void saveItem(item, { product_variant_id: event.target.value || null, create_catalog_product: false, match_status: event.target.value ? "matched" : "unmatched" })}><option value="">Sin relacionar</option>{variants.map((variant) => <option key={variant.id} value={variant.id}>{variant.label}{variant.barcode ? ` · ${variant.barcode}` : ""}</option>)}</select><label className="check"><input checked={item.create_catalog_product} disabled={Boolean(item.product_variant_id)} onChange={(event) => void saveItem(item, { create_catalog_product: event.target.checked, match_status: event.target.checked ? "review_required" : "unmatched" })} type="checkbox" /> Crear producto nuevo</label></>}</td><td>{selected.status === "applied" ? "Aplicada" : <label className="check"><input checked={item.apply_to_catalog} onChange={(event) => void saveItem(item, { apply_to_catalog: event.target.checked })} type="checkbox" /> Incluir</label>}</td></tr>; })}</tbody></table></div>}
       {selected.status !== "applied" && items.length > 0 && <div className="form-actions"><button disabled={busy} onClick={() => void apply()} type="button">{busy ? "Aplicando…" : "3. Confirmar y aplicar"}</button></div>}</section>}
-    {notice && <p className="notice">{notice}</p>}{error && <p className="form-error" role="alert">{error}</p>}
+    {progress && <p className="notice">{progress}</p>}{notice && <p className="notice">{notice}</p>}{error && <p className="form-error" role="alert">{error}</p>}
   </>;
 }

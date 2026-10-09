@@ -56,6 +56,8 @@ Los comandos efectivamente verificados se registran en `CURRENT_STATE.md`.
 - La migration `20261008000000_supplier_price_lists.sql` versiona listas privadas, vínculos persistentes por código de proveedor, ítems detectados y opciones de compra. El costo efectivo es una columna generada y las RPCs de staging/aplicación validan rol y ownership dentro de una transacción.
 - La aplicación no actualiza stock ni precio de venta. Sólo al confirmar una lista, el costo seleccionado se escribe mediante `variant_costs`, preservando el historial existente; la lista queda inmutable y auditable.
 - Los originales usan el bucket privado `supplier-price-lists`, con prefijo de `business_id` y policies de Storage por membresía. PDF/JPG/PNG quedan detrás de una Edge Function que sólo devuelve DTOs validados y requiere secretos server-side; no tiene autoridad para escribir la base.
+- Para PDF, el navegador extrae texto seleccionable por página con `pdfjs-dist` antes de pedir interpretación visual. Si no obtiene candidatos estructurados, PDF visual/JPG/PNG se procesan en batches de hasta tres páginas mediante la Edge Function; cada batch usa una URL privada firmada de corta vida y devuelve sólo candidatos con schema validado.
+- La Edge Function exige una membresía owner/admin activa, `SUPPLIER_LISTS_AI_URL` y `SUPPLIER_LISTS_AI_API_KEY`. El proveedor multimodal recibe el archivo por URL temporal y debe devolver `supplier_price_list_candidates_v1`; la función rechaza respuestas libres o inválidas y no escribe en tablas de negocio.
 
 ## Ventas / POS aplicados y verificados remotamente
 

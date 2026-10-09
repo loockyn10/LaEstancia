@@ -100,6 +100,7 @@ Después de Sprint 8, `pnpm check` y `git diff --check` volvieron a pasar con lo
 ## Pendiente
 
 - La implementación local de Listas de proveedores está versionada en `20261008000000_supplier_price_lists.sql`, pero no está aplicada ni tiene tipos generados: el dry-run contra el proyecto enlazado devolvió 403 por privilegios de cuenta. No se ejecutó `db push`, E2E remoto ni regeneración oficial de `generated.ts`.
+- El importador local ya extrae texto de PDF y prepara interpretación multimodal para PDF visual/JPG/PNG, pero requiere desplegar la Edge Function y configurar `SUPPLIER_LISTS_AI_URL` y `SUPPLIER_LISTS_AI_API_KEY`. No hay credenciales configuradas ni se hizo escritura remota durante esta mejora.
 
 Definir el flujo administrativo para altas y gestión de usuarios reales y memberships en un sprint posterior. La migration no incluye policies de escritura de cliente.
 
