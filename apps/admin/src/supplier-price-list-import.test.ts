@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { detectSupplierHeader, detectSupplierPdfText, detectSupplierRows, shouldUseVisualPdfFallback, toDetectedSupplierProducts } from "./supplier-price-list-import";
+import { deduplicateDetectedSupplierProducts, detectSupplierHeader, detectSupplierPdfText, detectSupplierRows, interpretSupplierPdfPages, shouldUseVisualPdfFallback, toDetectedSupplierProducts, visualFallbackPages } from "./supplier-price-list-import";
+import { openAiErrorDetailsFrom, toOpenAiFileData } from "../../../supabase/functions/interpret-supplier-price-list/protocol";
 
 describe("supplier PDF text interpretation", () => {
   it("detects multiple products, Argentine money, packaging, promo and source page", () => {
@@ -73,5 +74,50 @@ describe("PDF fallback decision", () => {
 
   it("does not treat an empty visual response as candidates", () => {
     expect(toDetectedSupplierProducts([])).toEqual([]);
+  });
+
+  it("keeps locally understood pages and requests visual interpretation only for insufficient pages", () => {
+    const pages = [
+      { page: 1, text: "Hypoallergenyc Dog 1.4 KG\nCódigo interno: AF1001\nEAN: 7798320835138\nPrecio de compra: 22695\nPVP: 29504" },
+      { page: 2, text: "Catálogo ilustrado sin precios seleccionables" },
+      { page: 3, text: "Arena 10 kg\nCódigo: AR10\nPrecio + IVA: $8.000\nUnidades de venta: 2\nPVP: $10.000" },
+    ];
+    const interpretation = interpretSupplierPdfPages(pages);
+    expect(interpretation[0].products[0]).toMatchObject({ name: "Hypoallergenyc Dog", presentation: "1.4 KG", supplier_code: "AF1001", barcode: "7798320835138", suggested_retail_price_cents: 2950400 });
+    expect(interpretation[2].products[0].purchase_options[0]).toMatchObject({ purchase_price_cents: 800000, stock_units_per_purchase: 2 });
+    expect(visualFallbackPages(pages)).toEqual([2]);
+  });
+
+  it("recognizes multiple blocks and value x bulto without a fixed table layout", () => {
+    const products = detectSupplierPdfText([{ page: 6, text: [
+      "Alimento Adulto 15 kg",
+      "Codigo interno: AD15",
+      "EAN: 0001234567890",
+      "Valor x bulto: $35.500",
+      "unidades de venta: 3",
+      "PVP: $45.000",
+      "Alimento Cachorro 3 kg",
+      "Código: CA03",
+      "Precio: $12.000",
+      "PVP: $15.000",
+    ].join("\n") }]);
+    expect(products).toHaveLength(2);
+    expect(products[0]).toMatchObject({ name: "Alimento Adulto", presentation: "15 kg", supplier_code: "AD15", barcode: "0001234567890", suggested_retail_price_cents: 4500000 });
+    expect(products[0].purchase_options[0]).toMatchObject({ purchase_price_cents: 3550000, purchase_unit: "other", stock_units_per_purchase: 3 });
+    expect(products[1]).toMatchObject({ name: "Alimento Cachorro", presentation: "3 kg", supplier_code: "CA03" });
+  });
+
+  it("does not duplicate local candidates when a retried visual page repeats one", () => {
+    const local = detectSupplierPdfText([{ page: 1, text: "Producto 1 kg\nCódigo: A1\nCosto: $100" }]);
+    const visual = toDetectedSupplierProducts([{ name: "Producto", presentation: "1 kg", supplierCode: "A1", source: { page: 1 }, confidence: 0.9, warnings: [], purchaseOptions: [{ purchasePriceCents: 10000 }] }]);
+    expect(deduplicateDetectedSupplierProducts([...local, ...visual])).toHaveLength(1);
+  });
+
+  it("preserves useful OpenAI error details without exposing request payloads", () => {
+    expect(openAiErrorDetailsFrom(400, new Headers({ "x-request-id": "req_test_123" }), { error: { type: "invalid_request_error", code: "unsupported_parameter", message: "file_data is malformed" } })).toEqual({ status: 400, type: "invalid_request_error", code: "unsupported_parameter", message: "file_data is malformed", request_id: "req_test_123" });
+  });
+
+  it("encodes private PDF bytes as an input_file data URL", async () => {
+    await expect(toOpenAiFileData(new Blob(["PDF bytes"], { type: "application/pdf" }))).resolves.toBe("data:application/pdf;base64,UERGIGJ5dGVz");
   });
 });

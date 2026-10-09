@@ -1,7 +1,9 @@
 // The browser never receives an OpenAI credential. This function authenticates
-// the caller, creates a short-lived URL for one private list file, and returns
-// only validated extraction candidates.
+// the caller, reads one private list file with its service credential, and
+// returns only validated extraction candidates. OpenAI never needs a public or
+// signed Supabase URL.
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { openAiErrorDetailsFrom, toOpenAiFileData, type OpenAiErrorDetails } from "./protocol.ts";
 
 type PurchaseUnit = "unit" | "box" | "bundle" | "bag" | "other";
 type PurchaseOption = { supplierCode?: string; purchaseUnit?: PurchaseUnit; purchaseUnitLabel?: string; stockUnitsPerPurchase?: number; purchasePriceCents: number; paidUnits?: number; bonusUnits?: number };
@@ -115,8 +117,12 @@ function outputText(response: unknown): { text?: string; refusal?: string } {
   return {};
 }
 
-function errorResponse(code: string, error: string, status: number) {
-  return Response.json({ code, error }, { status, headers: corsHeaders });
+function errorResponse(code: string, error: string, status: number, openai?: OpenAiErrorDetails) {
+  return Response.json({ code, error, ...(openai ? { openai } : {}) }, { status, headers: corsHeaders });
+}
+
+async function openAiFailure(response: Response): Promise<OpenAiErrorDetails> {
+  return openAiErrorDetailsFrom(response.status, response.headers, await response.json().catch(() => null));
 }
 
 Deno.serve(async (request) => {
@@ -132,9 +138,11 @@ Deno.serve(async (request) => {
   if (!openAiKey) return Response.json({ code: "visual_interpretation_not_configured", error: "Interpretación visual no configurada.", missing: ["OPENAI_API_KEY"] }, { status: 503, headers: corsHeaders });
   if (!authorization) return errorResponse("unauthorized", "Sesión requerida.", 401);
 
-  const body = await request.json().catch(() => null) as { business_id?: unknown; file_path?: unknown; mime_type?: unknown; file_format?: unknown } | null;
+  const body = await request.json().catch(() => null) as { business_id?: unknown; file_path?: unknown; mime_type?: unknown; file_format?: unknown; page_numbers?: unknown } | null;
   if (!body || typeof body.business_id !== "string" || typeof body.file_path !== "string" || typeof body.mime_type !== "string" || typeof body.file_format !== "string" || !supportedFormats.includes(body.file_format as typeof supportedFormats[number])) return errorResponse("invalid_request", "Solicitud de interpretación inválida.", 400);
   if (!body.file_path.startsWith(`${body.business_id}/`)) return errorResponse("invalid_file_path", "Archivo fuera del business.", 400);
+  const pageNumbers = body.page_numbers === undefined ? [] : Array.isArray(body.page_numbers) && body.page_numbers.every((page) => Number.isSafeInteger(page) && page > 0 && page <= 40) ? [...new Set(body.page_numbers as number[])].sort((a, b) => a - b) : null;
+  if (pageNumbers === null || (pageNumbers.length > 0 && body.file_format !== "pdf")) return errorResponse("invalid_request", "Las páginas solicitadas no son válidas.", 400);
 
   const userClient = createClient(url, anonKey, { global: { headers: { Authorization: authorization } } });
   const { data: userData } = await userClient.auth.getUser();
@@ -143,14 +151,17 @@ Deno.serve(async (request) => {
   if (!membership || !["owner", "admin"].includes(membership.role)) return errorResponse("forbidden", "No tenés permisos para interpretar listas.", 403);
 
   const serviceClient = createClient(url, serviceRoleKey);
-  const { data: signed, error: signedError } = await serviceClient.storage.from("supplier-price-lists").createSignedUrl(body.file_path, 120);
-  if (signedError || !signed?.signedUrl) return errorResponse("source_unavailable", "No pudimos leer el archivo original.", 404);
+  const { data: source, error: sourceError } = await serviceClient.storage.from("supplier-price-lists").download(body.file_path);
+  if (sourceError || !source) return errorResponse("source_unavailable", "No pudimos leer el archivo original.", 404);
+  if (source.size > 20 * 1024 * 1024) return errorResponse("source_too_large", "El archivo supera el límite de 20 MB para interpretación visual.", 413);
+  const sourceDataUrl = await toOpenAiFileData(source);
+  const pageInstruction = pageNumbers.length ? `\n\nInterpretá exclusivamente las páginas ${pageNumbers.join(", ")}; no devuelvas productos de otras páginas.` : "";
 
   const content = [
-    { type: "input_text", text: extractorInstructions },
+    { type: "input_text", text: `${extractorInstructions}${pageInstruction}` },
     body.file_format === "pdf"
-      ? { type: "input_file", file_url: signed.signedUrl, filename: "supplier-price-list.pdf", detail: "high" }
-      : { type: "input_image", image_url: signed.signedUrl, detail: "high" },
+      ? { type: "input_file", file_data: sourceDataUrl, filename: "supplier-price-list.pdf" }
+      : { type: "input_image", image_url: sourceDataUrl, detail: "high" },
   ];
 
   let openAiResponse: Response;
@@ -162,14 +173,19 @@ Deno.serve(async (request) => {
       signal: AbortSignal.timeout(55_000),
     });
   } catch (cause) {
+    console.error("interpret-supplier-price-list OpenAI transport error", { name: cause instanceof Error ? cause.name : "unknown", message: cause instanceof Error ? cause.message : "unknown" });
     if (cause instanceof DOMException && cause.name === "TimeoutError") return errorResponse("openai_timeout", "La interpretación visual superó el tiempo máximo.", 504);
     return errorResponse("openai_unavailable", "No pudimos comunicarnos con OpenAI.", 502);
   }
 
-  if (openAiResponse.status === 401 || openAiResponse.status === 403) return errorResponse("openai_auth_failed", "OpenAI rechazó las credenciales del servidor.", 502);
-  if (openAiResponse.status === 429) return errorResponse("openai_rate_limited", "OpenAI está temporalmente sin capacidad para interpretar la lista.", 429);
-  if (openAiResponse.status >= 500) return errorResponse("openai_server_error", "OpenAI no está disponible temporalmente.", 502);
-  if (!openAiResponse.ok) return errorResponse("openai_request_failed", "OpenAI no pudo procesar la lista.", 502);
+  if (!openAiResponse.ok) {
+    const details = await openAiFailure(openAiResponse);
+    console.error("interpret-supplier-price-list OpenAI request failed", details);
+    if (openAiResponse.status === 401 || openAiResponse.status === 403) return errorResponse("openai_auth_failed", "OpenAI rechazó las credenciales del servidor.", 502, details);
+    if (openAiResponse.status === 429) return errorResponse("openai_rate_limited", "OpenAI está temporalmente sin capacidad para interpretar la lista.", 429, details);
+    if (openAiResponse.status >= 500) return errorResponse("openai_server_error", "OpenAI no está disponible temporalmente.", 502, details);
+    return errorResponse("openai_request_failed", "OpenAI no pudo procesar la lista.", 502, details);
+  }
 
   const response = await openAiResponse.json().catch(() => null) as Record<string, unknown> | null;
   if (!response) return errorResponse("invalid_visual_response", "OpenAI devolvió una respuesta inválida.", 502);

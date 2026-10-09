@@ -100,7 +100,7 @@ Después de Sprint 8, `pnpm check` y `git diff --check` volvieron a pasar con lo
 ## Pendiente
 
 - La implementación local de Listas de proveedores está versionada en `20261008000000_supplier_price_lists.sql`, pero no está aplicada ni tiene tipos generados: el dry-run contra el proyecto enlazado devolvió 403 por privilegios de cuenta. No se ejecutó `db push`, E2E remoto ni regeneración oficial de `generated.ts`.
-- El importador local ya extrae texto de PDF y prepara interpretación multimodal para PDF visual/JPG/PNG. La Edge Function usa OpenAI Responses API directamente y requiere `OPENAI_API_KEY`; `SUPPLIER_LISTS_AI_MODEL` es opcional y por defecto usa `gpt-5.6-luna`. No hay credenciales configuradas ni se hizo escritura remota durante esta mejora.
+- El importador local extrae texto de PDF por página y reconoce bloques repetidos de producto, código, EAN, costo/PVP, `valor x bulto` y unidades de venta. Conserva los candidatos locales y usa visión sólo en las páginas insuficientes; si falla una página, los candidatos previos se guardan como lista `reviewed` y la UI permite reintentar las páginas visuales. La Edge Function usa OpenAI Responses API directamente y requiere `OPENAI_API_KEY`; `SUPPLIER_LISTS_AI_MODEL` es opcional y por defecto usa `gpt-5.6-luna`. Descarga el privado con servicio y usa `input_file.file_data` base64 para PDF (máximo 20 MB); no depende de URLs firmadas. Sus errores devuelven y registran detalles OpenAI seguros. No hay credenciales configuradas ni se hizo escritura remota durante esta mejora.
 
 Definir el flujo administrativo para altas y gestión de usuarios reales y memberships en un sprint posterior. La migration no incluye policies de escritura de cliente.
 

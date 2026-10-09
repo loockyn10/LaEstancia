@@ -1,6 +1,6 @@
 import { type ChangeEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { getSupabaseClient } from "./lib/supabase";
-import { detectSupplierHeader, detectSupplierPdfText, detectSupplierRows, extractPdfTextPages, readSupplierSpreadsheet, shouldUseVisualPdfFallback, supplierColumnMapping, supplierListLimits, toDetectedSupplierProducts, type DetectedSupplierProduct, type PdfTextPage, type SupplierColumn, type SupplierColumnMapping, type SupplierSpreadsheet, type VisualDetectedProduct, visualInterpretationMessage } from "./supplier-price-list-import";
+import { deduplicateDetectedSupplierProducts, detectSupplierHeader, detectSupplierRows, extractPdfTextPages, interpretSupplierPdfPages, readSupplierSpreadsheet, supplierColumnMapping, supplierListLimits, toDetectedSupplierProducts, visualFallbackPages, type DetectedSupplierProduct, type PdfTextPage, type SupplierColumn, type SupplierColumnMapping, type SupplierSpreadsheet, type VisualDetectedProduct, visualInterpretationMessage } from "./supplier-price-list-import";
 import { barcodeMatchPatch, barcodeVariant, createProductUpdates, findBarcodeConflicts, includeUpdates, matchingSelectionPatch } from "./supplier-price-list-matching";
 
 type Role = "owner" | "admin" | "staff";
@@ -22,6 +22,23 @@ function firstErrorMessage(value: unknown): string | null {
   return null;
 }
 
+function visualErrorMessage(value: unknown) {
+  if (!value || typeof value !== "object") return null;
+  const body = value as Record<string, unknown>;
+  const friendly = firstErrorMessage(body);
+  const details = body.openai;
+  if (!details || typeof details !== "object") return friendly;
+  const openai = details as Record<string, unknown>;
+  const pieces = [
+    typeof openai.status === "number" ? `HTTP ${openai.status}` : null,
+    typeof openai.type === "string" ? `tipo: ${openai.type}` : null,
+    typeof openai.code === "string" ? `código: ${openai.code}` : null,
+    typeof openai.message === "string" ? openai.message : null,
+    typeof openai.request_id === "string" ? `request id: ${openai.request_id}` : null,
+  ].filter((part): part is string => Boolean(part));
+  return [friendly, pieces.length ? `Detalle técnico: ${pieces.join(" · ")}` : null].filter(Boolean).join(" ");
+}
+
 async function describeFunctionError(error: { message?: unknown; context?: unknown }): Promise<string> {
   const context = error.context;
   if (context instanceof Response) {
@@ -29,7 +46,7 @@ async function describeFunctionError(error: { message?: unknown; context?: unkno
     if (text.trim()) {
       try {
         const body = JSON.parse(text) as unknown;
-        return firstErrorMessage(body) ?? text.trim();
+        return visualErrorMessage(body) ?? text.trim();
       } catch {
         return text.trim();
       }
@@ -45,7 +62,7 @@ async function describeFunctionError(error: { message?: unknown; context?: unkno
         return body.trim();
       }
     }
-    return firstErrorMessage(body) ?? firstErrorMessage(contextObject) ?? String(error.message ?? "");
+    return visualErrorMessage(body) ?? firstErrorMessage(contextObject) ?? String(error.message ?? "");
   }
   return typeof error.message === "string" ? error.message : "";
 }
@@ -57,7 +74,7 @@ const matchReasonLabel = (reason: Item["match_reason"]) => reason === "supplier_
 export function SupplierPriceLists({ businessId, role, variants }: { businessId: string; role: Role; variants: Variant[] }) {
   const [suppliers, setSuppliers] = useState<Supplier[]>([]); const [lists, setLists] = useState<List[]>([]); const [selected, setSelected] = useState<List | null>(null); const [items, setItems] = useState<Item[]>([]);
   const [supplierId, setSupplierId] = useState(""); const [file, setFile] = useState<File | null>(null); const [spreadsheet, setSpreadsheet] = useState<SupplierSpreadsheet | null>(null); const [sheetName, setSheetName] = useState(""); const [headerRowIndex, setHeaderRowIndex] = useState(0); const [columnMapping, setColumnMapping] = useState<SupplierColumnMapping>({}); const [pdfPages, setPdfPages] = useState<PdfTextPage[] | null>(null); const [detected, setDetected] = useState<DetectedSupplierProduct[] | null>(null);
-  const [error, setError] = useState<string | null>(null); const [notice, setNotice] = useState<string | null>(null); const [progress, setProgress] = useState<string | null>(null); const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null); const [notice, setNotice] = useState<string | null>(null); const [progress, setProgress] = useState<string | null>(null); const [busy, setBusy] = useState(false); const [pendingVisualPages, setPendingVisualPages] = useState<Record<string, number[]>>({});
   const editable = manager(role);
   const load = useCallback(async () => {
     const client = getSupabaseClient(); if (!client) return;
@@ -98,8 +115,12 @@ export function SupplierPriceLists({ businessId, role, variants }: { businessId:
   async function interpret() {
     if (spreadsheet && sheetName) try { const next = detectSupplierRows(spreadsheet.sheets[sheetName], sheetName, { headerRowIndex, mapping: columnMapping }); setDetected(next); setError(null); setNotice(`${next.length} productos detectados determinísticamente.`); return; } catch (interpretError) { setError(interpretError instanceof Error ? interpretError.message : "No pudimos interpretar la hoja."); return; }
     if (pdfPages) {
-      const next = detectSupplierPdfText(pdfPages);
-      if (!shouldUseVisualPdfFallback(pdfPages, next)) { setDetected(next); setNotice(`${next.length} productos detectados desde texto seleccionable. Revisá la muestra antes de guardar.`); return; }
+      const interpreted = interpretSupplierPdfPages(pdfPages);
+      const localCandidates = interpreted.flatMap((entry) => entry.products);
+      const fallbackPages = interpreted.filter((entry) => entry.requiresVisualFallback).map((entry) => entry.page);
+      if (!fallbackPages.length) { setDetected(localCandidates); setNotice(`${localCandidates.length} productos detectados desde texto seleccionable. Revisá la muestra antes de guardar.`); return; }
+      await interpretVisually({ localCandidates, fallbackPages, totalPages: pdfPages.length });
+      return;
     }
     await interpretVisually();
   }
@@ -116,36 +137,47 @@ export function SupplierPriceLists({ businessId, role, variants }: { businessId:
     return { client, db, id, path, format, header: header.data as List };
   }
 
-  async function interpretVisually() {
+  async function interpretVisually(options?: { localCandidates: DetectedSupplierProduct[]; fallbackPages: number[]; totalPages: number }) {
     if (!file || !supplierId) return setError("Elegí proveedor y archivo antes de interpretar.");
     setBusy(true); setError(null); setNotice(null); setProgress("Preparando archivo para interpretación visual…");
     let draft: Awaited<ReturnType<typeof createDraftAndUpload>> | null = null;
-    const candidates: DetectedSupplierProduct[] = [];
+    const candidates: DetectedSupplierProduct[] = [...(options?.localCandidates ?? [])];
+    let remainingFallbackPages = options?.fallbackPages ?? [];
     try {
       draft = await createDraftAndUpload();
-      setProgress(`Interpretando ${file.type === "application/pdf" ? "PDF completo" : "imagen"}…`);
-      const invoke = await (draft.client as unknown as FunctionClient).functions.invoke("interpret-supplier-price-list", { body: { business_id: businessId, file_path: draft.path, mime_type: file.type || "application/octet-stream", file_format: draft.format } });
-      if (invoke.error) {
-        throw new Error(await describeFunctionError(invoke.error));
+      const pages: Array<number | null> = options?.fallbackPages ?? [null];
+      for (let index = 0; index < pages.length; index += 1) {
+        const page = pages[index];
+        remainingFallbackPages = pages.slice(index).filter((candidate): candidate is number => candidate !== null);
+        setProgress(page === null ? "Interpretando imagen…" : `Interpretando visualmente página ${page} (${index + 1}/${pages.length})…`);
+        const invoke = await (draft.client as unknown as FunctionClient).functions.invoke("interpret-supplier-price-list", { body: { business_id: businessId, file_path: draft.path, mime_type: file.type || "application/octet-stream", file_format: draft.format, ...(page === null ? {} : { page_numbers: [page] }) } });
+        if (invoke.error) throw new Error(await describeFunctionError(invoke.error));
+        const response = invoke.data as { products?: VisualDetectedProduct[] } | null;
+        if (!response || !Array.isArray(response.products)) throw new Error("La interpretación visual devolvió una respuesta inválida.");
+        candidates.push(...toDetectedSupplierProducts(response.products));
       }
-      const response = invoke.data as { products?: VisualDetectedProduct[] } | null;
-      if (!response || !Array.isArray(response.products)) throw new Error("La interpretación visual devolvió una respuesta inválida.");
-      candidates.push(...toDetectedSupplierProducts(response.products));
-      if (!candidates.length) throw new Error("No se detectaron productos. Revisá el archivo o corregí manualmente la lista.");
-      const saved = await draft.db.rpc("save_supplier_price_list_items", { target_business_id: businessId, target_price_list_id: draft.id, detected_items: candidates });
+      const uniqueCandidates = deduplicateDetectedSupplierProducts(candidates);
+      if (!uniqueCandidates.length) throw new Error("No se detectaron productos. Revisá el archivo o corregí manualmente la lista.");
+      const saved = await draft.db.rpc("save_supplier_price_list_items", { target_business_id: businessId, target_price_list_id: draft.id, detected_items: uniqueCandidates });
       if (saved.error) throw new Error(`El archivo quedó como borrador, pero no se pudieron guardar los productos: ${saved.error.message}`);
-      await load(); await loadItems(draft.header); setNotice(`${candidates.length} productos detectados. Revisá matching y opciones antes de aplicar.`);
+      setPendingVisualPages((current) => { const next = { ...current }; delete next[draft!.id]; return next; });
+      await load(); await loadItems({ ...draft.header, status: "reviewed" }); setNotice(`${uniqueCandidates.length} productos detectados. Revisá matching y opciones antes de aplicar.`);
     } catch (interpretError) {
       if (draft && candidates.length) {
-        const saved = await draft.db.rpc("save_supplier_price_list_items", { target_business_id: businessId, target_price_list_id: draft.id, detected_items: candidates });
-        if (!saved.error) { await load(); await loadItems(draft.header); setNotice(`${candidates.length} productos detectados antes del error. Podés revisarlos; las páginas restantes requieren reintento.`); }
+        const uniqueCandidates = deduplicateDetectedSupplierProducts(candidates);
+        const saved = await draft.db.rpc("save_supplier_price_list_items", { target_business_id: businessId, target_price_list_id: draft.id, detected_items: uniqueCandidates });
+        if (!saved.error) {
+          const pending = remainingFallbackPages;
+          setPendingVisualPages((current) => ({ ...current, [draft!.id]: pending }));
+          await load(); await loadItems({ ...draft.header, status: "reviewed" }); setNotice(`Interpretación parcial — ${uniqueCandidates.length} productos conservados. Podés revisar lo detectado y reintentar las ${pending.length} páginas pendientes.`);
+        }
       }
       setError(interpretError instanceof Error ? interpretError.message : "No pudimos interpretar visualmente el archivo.");
     }
     finally { setBusy(false); setProgress(null); }
   }
   async function retryInterpretation(list: List) {
-    if (list.status !== "draft") return;
+    if (list.status === "applied") return;
     const client = getSupabaseClient();
     if (!client) return setError("Falta configurar Supabase.");
     const db = client as unknown as UntypedDatabaseClient;
@@ -153,27 +185,33 @@ export function SupplierPriceLists({ businessId, role, variants }: { businessId:
     try {
       let candidates: DetectedSupplierProduct[] = [];
       let localPages: PdfTextPage[] | null = null;
+      let fallbackPages: number[] = [];
       if (list.file_format === "pdf") {
         const original = await client.storage.from("supplier-price-lists").download(list.file_path);
         if (original.error || !original.data) throw new Error("No pudimos recuperar el PDF original para reintentar.");
         const retryFile = new File([await original.data.arrayBuffer()], list.file_name, { type: list.mime_type });
         localPages = await extractPdfTextPages(retryFile, (current, total) => setProgress(`Leyendo texto de página ${current} de ${total}…`));
-        candidates = detectSupplierPdfText(localPages);
+        candidates = interpretSupplierPdfPages(localPages).flatMap((entry) => entry.products);
+        fallbackPages = pendingVisualPages[list.id] ?? visualFallbackPages(localPages);
       }
-      if (!candidates.length || (localPages !== null && shouldUseVisualPdfFallback(localPages, candidates))) {
-        setProgress(`Interpretando ${list.file_format === "pdf" ? "PDF completo" : "imagen"}…`);
-        const invoke = await (client as unknown as FunctionClient).functions.invoke("interpret-supplier-price-list", { body: { business_id: businessId, file_path: list.file_path, mime_type: list.mime_type, file_format: list.file_format } });
+      const pages = localPages === null ? [null] : fallbackPages;
+      for (let index = 0; index < pages.length; index += 1) {
+        const page = pages[index];
+        setProgress(page === null ? "Interpretando imagen…" : `Reintentando página ${page} (${index + 1}/${pages.length})…`);
+        const invoke = await (client as unknown as FunctionClient).functions.invoke("interpret-supplier-price-list", { body: { business_id: businessId, file_path: list.file_path, mime_type: list.mime_type, file_format: list.file_format, ...(page === null ? {} : { page_numbers: [page] }) } });
         if (invoke.error) throw new Error(await describeFunctionError(invoke.error));
         const response = invoke.data as { products?: VisualDetectedProduct[] } | null;
         if (!response || !Array.isArray(response.products) || response.products.length === 0) throw new Error("La interpretación visual no devolvió productos utilizables.");
-        candidates = toDetectedSupplierProducts(response.products);
+        candidates.push(...toDetectedSupplierProducts(response.products));
       }
+      candidates = deduplicateDetectedSupplierProducts(candidates);
       if (!candidates.length) throw new Error("No se detectaron productos utilizables.");
       // The RPC replaces only unconfirmed staging for this same list, so a retry
       // cannot duplicate candidates or touch the real catalogue.
       const saved = await db.rpc("save_supplier_price_list_items", { target_business_id: businessId, target_price_list_id: list.id, detected_items: candidates });
       if (saved.error) throw new Error(`No pudimos guardar los productos reintentados: ${saved.error.message}`);
       const reviewed = { ...list, status: "reviewed" as const };
+      setPendingVisualPages((current) => { const next = { ...current }; delete next[list.id]; return next; });
       await load(); await loadItems(reviewed); setNotice(`${candidates.length} productos detectados. La lista quedó lista para revisión.`);
     } catch (retryError) {
       setError(retryError instanceof Error ? retryError.message : "No pudimos reintentar la interpretación.");
@@ -229,7 +267,7 @@ export function SupplierPriceLists({ businessId, role, variants }: { businessId:
       {file && !spreadsheet && <div className="form-actions"><button disabled={busy} onClick={() => void interpret()} type="button">{busy ? "Interpretando…" : "Interpretar lista"}</button></div>}
       {detected && <><p className="notice">{detected.length} productos detectados determinísticamente. Revisá la muestra antes de guardar.</p><div className="table-wrap"><table><thead><tr><th>Producto</th><th>Código</th><th>EAN</th><th>Costo</th><th>Condición</th><th>Advertencias</th></tr></thead><tbody>{detected.slice(0, 12).map((item, index) => { const option = item.purchase_options[0]; return <tr key={index}><td>{item.name}<br /><small>{item.presentation}</small></td><td>{item.supplier_code ?? "—"}</td><td>{item.barcode ?? "—"}</td><td>{money(option?.purchase_price_cents ?? null)}</td><td>{option ? `${option.purchase_unit_label ?? "unidad"} · paga ${option.units_paid}${option.units_bonus ? ` + ${option.units_bonus}` : ""}` : "—"}</td><td>{item.warnings.join(" ") || "—"}</td></tr>; })}</tbody></table></div><div className="form-actions"><button disabled={busy} onClick={() => void stage()} type="button">{busy ? "Guardando…" : "Guardar para revisión"}</button></div></>}
     </section>
-    <section className="list-section"><h2>Listas recibidas</h2>{!lists.length ? <p className="empty">Todavía no hay listas de proveedores.</p> : <div className="table-wrap"><table><thead><tr><th>Proveedor</th><th>Archivo</th><th>Fecha</th><th>Estado</th><th /></tr></thead><tbody>{lists.map((list) => <tr key={list.id}><td>{supplierName(list.supplier_id)}</td><td>{list.file_name}</td><td>{list.list_date ?? new Intl.DateTimeFormat("es-AR").format(new Date(list.created_at))}</td><td><span className="badge">{list.status === "draft" ? "Interpretación pendiente" : list.status === "reviewed" ? "Revisar" : "Aplicada"}</span></td><td>{list.status === "draft" ? <button className="link-button" disabled={busy} onClick={() => void retryInterpretation(list)} type="button">Reintentar interpretación</button> : <button className="link-button" onClick={() => void loadItems(list)} type="button">{list.status === "applied" ? "Ver" : "Revisar"}</button>}</td></tr>)}</tbody></table></div>}</section>
+    <section className="list-section"><h2>Listas recibidas</h2>{!lists.length ? <p className="empty">Todavía no hay listas de proveedores.</p> : <div className="table-wrap"><table><thead><tr><th>Proveedor</th><th>Archivo</th><th>Fecha</th><th>Estado</th><th /></tr></thead><tbody>{lists.map((list) => <tr key={list.id}><td>{supplierName(list.supplier_id)}</td><td>{list.file_name}</td><td>{list.list_date ?? new Intl.DateTimeFormat("es-AR").format(new Date(list.created_at))}</td><td><span className="badge">{list.status === "draft" ? "Interpretación pendiente" : list.status === "reviewed" ? pendingVisualPages[list.id]?.length ? `Revisión parcial (${pendingVisualPages[list.id].length} páginas pendientes)` : "Revisar" : "Aplicada"}</span></td><td>{list.status === "applied" ? <button className="link-button" onClick={() => void loadItems(list)} type="button">Ver</button> : <><button className="link-button" onClick={() => void loadItems(list)} type="button">Revisar</button>{(list.status === "draft" || list.file_format === "pdf" || pendingVisualPages[list.id]?.length) && <button className="link-button" disabled={busy} onClick={() => void retryInterpretation(list)} type="button">Reintentar páginas pendientes</button>}</>}</td></tr>)}</tbody></table></div>}</section>
     {selected && <section className="form-section import-panel"><div className="section-header"><div><p className="eyebrow">{supplierName(selected.supplier_id)}</p><h2>2. Matching y preview</h2><p>Los códigos de proveedor quedan vinculados para la próxima lista. Un barcode sólo ayuda a identificar la presentación; no identifica una opción de compra.</p></div></div><div className="import-summary"><strong>{metrics.total} detectados</strong><span>{metrics.linked} relacionados</span><span className={metrics.review ? "invalid-count" : ""}>{metrics.review} por resolver</span></div>
       {!items.length ? <div className="notice"><p>{selected.status === "draft" ? "Interpretación pendiente: no hay candidatos utilizables todavía." : "Esta lista aún no tiene productos interpretados."}</p>{selected.status === "draft" && <button className="secondary compact" disabled={busy} onClick={() => void retryInterpretation(selected)} type="button">{busy ? "Reintentando…" : "Reintentar interpretación"}</button>}</div> : <>{selected.status !== "applied" && <div className="form-actions matching-actions"><button className="secondary compact" disabled={busy || !items.some((item) => !item.product_variant_id)} onClick={() => void toggleCreateProducts()} type="button">{items.some((item) => !item.product_variant_id) && items.filter((item) => !item.product_variant_id).every((item) => item.create_catalog_product) ? "Desmarcar productos nuevos" : "Marcar sin relacionar como producto nuevo"}</button><button className="secondary compact" disabled={busy} onClick={() => void setAllIncluded(true)} type="button">Incluir todos</button><button className="secondary compact" disabled={busy} onClick={() => void setAllIncluded(false)} type="button">Excluir todos</button></div>}{barcodeConflicts.map((conflict) => <p className="form-error" key={conflict.barcode}>Conflicto: el barcode {conflict.barcode} aparece asociado a productos distintos. Relacioná las filas al mismo producto o excluí una antes de aplicar.</p>)}<div className="table-wrap"><table><thead><tr><th>Producto / origen</th><th>Opción de compra</th><th>Costo efectivo</th><th>Matching</th><th>Aplicar</th></tr></thead><tbody>{items.map((item) => { const option = item.supplier_purchase_options.find((entry) => entry.is_selected) ?? item.supplier_purchase_options[0]; return <tr key={item.id}><td><strong>{item.detected_name}</strong><br /><small>{item.detected_presentation ?? "—"} · código: {item.supplier_code ?? "—"} · EAN: {item.barcode ?? "—"}</small>{item.warnings.length > 0 && <small className="danger"><br />{item.warnings.join(" ")}</small>}</td><td>{option ? `${option.purchase_unit} x${option.stock_units_per_purchase} · paga ${option.units_paid}${option.units_bonus ? ` + ${option.units_bonus}` : ""}` : "Inválida"}<br /><small>Compra: {money(option?.purchase_price_cents ?? null)}</small></td><td>{money(option?.effective_unit_cost_cents ?? null)}</td><td>{selected.status === "applied" ? variants.find((variant) => variant.id === item.product_variant_id)?.label ?? "—" : <><select value={item.product_variant_id ?? ""} onChange={(event) => void saveItem(item, matchingSelectionPatch(event.target.value || null))}><option value="">Sin relacionar</option>{variants.map((variant) => <option key={variant.id} value={variant.id}>{variant.label}{variant.barcodes[0] ? ` · ${variant.barcodes[0]}` : ""}</option>)}</select>{matchReasonLabel(item.match_reason) && <small className="muted">{matchReasonLabel(item.match_reason)}</small>}<label className="check"><input checked={item.create_catalog_product} disabled={Boolean(item.product_variant_id)} onChange={(event) => void saveItem(item, { create_catalog_product: event.target.checked, match_status: event.target.checked ? "review_required" : "unmatched", match_reason: null })} type="checkbox" /> Crear producto nuevo</label></>}</td><td>{selected.status === "applied" ? "Aplicada" : <label className="check"><input checked={item.apply_to_catalog} onChange={(event) => void saveItem(item, { apply_to_catalog: event.target.checked })} type="checkbox" /> Incluir</label>}</td></tr>; })}</tbody></table></div></>}
       {selected.status !== "applied" && items.length > 0 && <div className="form-actions"><button disabled={busy} onClick={() => void apply()} type="button">{busy ? "Aplicando…" : "3. Confirmar y aplicar"}</button></div>}</section>}

@@ -31,6 +31,7 @@ export type SupplierColumn = "name" | "presentation" | "supplier_code" | "barcod
 export type SupplierColumnMapping = Partial<Record<SupplierColumn, number>>;
 export type SupplierHeaderDetection = { rowIndex: number; confidence: number; headers: string[]; mapping: SupplierColumnMapping };
 export type PdfTextPage = { page: number; text: string };
+export type PdfPageInterpretation = { page: number; products: DetectedSupplierProduct[]; requiresVisualFallback: boolean };
 export type VisualDetectedProduct = {
   name: string;
   presentation?: string | null;
@@ -122,10 +123,10 @@ function parsePromo(value: string) {
   return match ? { paid: Number(match[1]), bonus: Number(match[2]) } : { paid: 1, bonus: 0 };
 }
 function parsePackaging(value: string) {
-  const match = value.match(/\b(caja|bulto|bolsa|pack)\s*(?:x|de)?\s*(\d+(?:[.,]\d{1,3})?)|\b(\d+(?:[.,]\d{1,3})?)\s*u\b/i);
+  const match = value.match(/\b(caja|bulto|bolsa|pack)\s*(?:x|de)?\s*(\d+(?:[.,]\d{1,3})?)|\b(?:unidades?\s+de\s+venta|unidades?|uds?)\s*[:x-]?\s*(\d+(?:[.,]\d{1,3})?)\b|\b(\d+(?:[.,]\d{1,3})?)\s*u\b/i);
   if (!match) return { unit: "unit" as const, label: null, contents: 1, warning: null };
   const unit = match[1]?.toLocaleLowerCase("es-AR") ?? "unit";
-  const contents = Number((match[2] ?? match[3]).replace(",", "."));
+  const contents = Number((match[2] ?? match[3] ?? match[4]).replace(",", "."));
   return { unit: unit === "caja" ? "box" as const : unit === "bulto" ? "bundle" as const : unit === "bolsa" ? "bag" as const : "other" as const, label: match[0], contents, warning: `Presentación inferida: ${match[0]}.` };
 }
 
@@ -154,8 +155,21 @@ export async function extractPdfTextPages(file: File, onProgress?: (current: num
 
 const labelledValue = (line: string, label: RegExp) => line.match(label)?.[1]?.trim() ?? null;
 const productHeading = (line: string) => /[A-Za-zÁÉÍÓÚÜÑáéíóúüñ]/.test(line)
-  && !/(costo|compra|pvp|precio|ean|barcode|c[oó]digo|art[íi]culo|^\s*(?:\d+[+x]|caja|bulto|bolsa|pack|\d+u))/i.test(line)
+  && !/(costo|compra|pvp|precio|valor\s*x\s*bulto|unidades?\s+de\s+venta|ean|barcode|c[oó]digo|art[íi]culo|^\s*(?:\d+[+x]|caja|bulto|bolsa|pack|\d+u))/i.test(line)
   && line.length >= 3;
+
+const purchasePriceLabel = /(?:precio\s*(?:de\s+)?compra|precio\s+costo|costo|valor\s*x\s*bulto|precio\s*(?:\+\s*iva)?)(?!\s*(?:de\s+venta|sugerido))/i;
+const purchasePriceValue = /(?:precio\s*(?:de\s+)?compra|precio\s+costo|costo|valor\s*x\s*bulto|precio\s*(?:\+\s*iva)?)(?!\s*(?:de\s+venta|sugerido))\s*[:$-]*\s*([^·]+)/i;
+const presentationValue = /(?:presentaci[oó]n|detalle)\s*[:-]*\s*([^·]+)/i;
+
+function splitNameAndPresentation(value: string) {
+  const match = value.match(/^(.*?)(?:\s*[·,/-]\s*|\s+)(\d+(?:[.,]\d+)?\s*(?:kg|kgs?|g|gr|grs|ml|l|lts?|u|un(?:idades?)?))$/i);
+  return match ? { name: match[1].trim(), presentation: match[2].trim() } : { name: value, presentation: null };
+}
+
+function countPurchasePriceSignals(text: string) {
+  return text.split(/\r?\n/).filter((line) => purchasePriceLabel.test(line)).length;
+}
 
 /** Conservative parser for selectable PDF text. It produces candidates only
  * when a product block carries a valid purchase price; visual interpretation
@@ -168,24 +182,25 @@ export function detectSupplierPdfText(pages: PdfTextPage[]): DetectedSupplierPro
     const flush = () => {
       if (!current) return;
       const joined = current.lines.join(" · ");
-      const costText = labelledValue(joined, /(?:precio\s+(?:de\s+)?compra|precio\s+costo|costo)\s*[:$-]*\s*([^·]+)/i);
-      const cost = costText ? parseMoneyCents(costText) : null;
+      const costText = labelledValue(joined, purchasePriceValue);
+      const cost = costText ? parseSupplierMoneyCents(costText) : null;
       if (cost !== null) {
-        const presentation = labelledValue(joined, /(?:presentaci[oó]n|detalle)\s*[:-]*\s*([^·]+)/i);
+        const inferred = splitNameAndPresentation(current.name);
+        const presentation = labelledValue(joined, presentationValue) ?? inferred.presentation;
         const supplierCode = labelledValue(joined, /(?:c[oó]digo(?:\s+interno)?|art(?:[íi]culo)?)\s*[:#-]*\s*([A-Za-z0-9._/-]+)/i);
         const barcode = labelledValue(joined, /(?:ean|barcode|c[oó]digo\s+de\s+barras)\s*[:#-]*\s*([A-Za-z0-9]+)/i);
         const pvpText = labelledValue(joined, /(?:pvp|precio\s+(?:de\s+)?venta\s+sugerido|precio\s+sugerido)\s*[:$-]*\s*([^·]+)/i);
         const packaging = parsePackaging(`${current.name} ${presentation ?? ""} ${joined}`);
         const promo = parsePromo(joined);
         detected.push({
-          name: current.name,
+          name: inferred.name,
           presentation,
           supplier_code: supplierCode,
           sku: null,
           barcode,
           brand: null,
           category: current.category,
-          suggested_retail_price_cents: pvpText ? parseMoneyCents(pvpText) : null,
+          suggested_retail_price_cents: pvpText ? parseSupplierMoneyCents(pvpText) : null,
           source_reference: { page: page.page, source_text: joined },
           warnings: [packaging.warning, current.category ? "Categoría sugerida desde el encabezado de página." : null].filter((value): value is string => Boolean(value)),
           confidence: 0.8,
@@ -206,10 +221,33 @@ export function detectSupplierPdfText(pages: PdfTextPage[]): DetectedSupplierPro
   return detected;
 }
 
-/** Extracting selectable text is not proof that the PDF was understood. */
+/** Decide independently per page: a difficult page must not discard the others. */
+export function interpretSupplierPdfPages(pages: PdfTextPage[]): PdfPageInterpretation[] {
+  return pages.map((page) => {
+    const products = detectSupplierPdfText([page]);
+    const signals = countPurchasePriceSignals(page.text);
+    return { page: page.page, products, requiresVisualFallback: products.length === 0 || signals > products.length };
+  });
+}
+
+export function visualFallbackPages(pages: PdfTextPage[]) {
+  return interpretSupplierPdfPages(pages).filter((entry) => entry.requiresVisualFallback).map((entry) => entry.page);
+}
+
+/** Backwards-compatible aggregate helper for callers that only need a yes/no. */
 export function shouldUseVisualPdfFallback(pages: PdfTextPage[], products: DetectedSupplierProduct[]) {
-  const purchasePriceSignals = pages.reduce((total, page) => total + (page.text.match(/(?:precio\s+(?:de\s+)?compra|precio\s+costo|costo)\s*[:$-]/gi)?.length ?? 0), 0);
-  return products.length === 0 || purchasePriceSignals > products.length;
+  return products.length === 0 || visualFallbackPages(pages).length > 0;
+}
+
+export function deduplicateDetectedSupplierProducts(products: DetectedSupplierProduct[]) {
+  const seen = new Set<string>();
+  return products.filter((product) => {
+    const option = product.purchase_options[0];
+    const key = [product.supplier_code ?? "", product.barcode ?? "", normalize(product.name), product.presentation ?? "", option?.purchase_price_cents ?? ""].join("|");
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 export function toDetectedSupplierProducts(products: VisualDetectedProduct[]): DetectedSupplierProduct[] {
