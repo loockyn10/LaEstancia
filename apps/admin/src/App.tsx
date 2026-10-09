@@ -560,7 +560,7 @@ function Catalog({
         variants={products.flatMap((product) => product.variants.map((variant) => ({
           id: variant.id ?? "",
           label: `${product.name} · ${variant.name}`,
-          barcode: variant.barcodes.find((barcode) => barcode.is_primary)?.code ?? variant.barcodes[0]?.code ?? "",
+          barcodes: variant.barcodes.map((barcode) => barcode.code),
         })).filter((variant) => Boolean(variant.id)))}
       />
     );
