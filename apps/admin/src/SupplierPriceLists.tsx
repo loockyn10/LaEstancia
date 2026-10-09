@@ -73,19 +73,15 @@ export function SupplierPriceLists({ businessId, role, variants }: { businessId:
     const candidates: DetectedSupplierProduct[] = [];
     try {
       draft = await createDraftAndUpload();
-      const allPages = pdfPages?.map((page) => page.page) ?? [1];
-      for (let index = 0; index < allPages.length; index += supplierListLimits.visualBatchPages) {
-        const pageNumbers = allPages.slice(index, index + supplierListLimits.visualBatchPages);
-        setProgress(`Interpretando ${file.type === "application/pdf" ? `páginas ${pageNumbers[0]}–${pageNumbers[pageNumbers.length - 1]} de ${allPages.length}` : "imagen"}…`);
-        const invoke = await (draft.client as unknown as FunctionClient).functions.invoke("interpret-supplier-price-list", { body: { business_id: businessId, file_path: draft.path, mime_type: file.type || "application/octet-stream", file_format: draft.format, page_numbers: pageNumbers, text_pages: (pdfPages ?? []).filter((page) => pageNumbers.includes(page.page)) } });
-        if (invoke.error) {
-          const detail = invoke.error.context ? await invoke.error.context.json().catch(() => null) as { error?: string } | null : null;
-          throw new Error(detail?.error ?? invoke.error.message);
-        }
-        const response = invoke.data as { products?: VisualDetectedProduct[] } | null;
-        if (!response || !Array.isArray(response.products)) throw new Error("La interpretación visual devolvió una respuesta inválida.");
-        candidates.push(...toDetectedSupplierProducts(response.products));
+      setProgress(`Interpretando ${file.type === "application/pdf" ? "PDF completo" : "imagen"}…`);
+      const invoke = await (draft.client as unknown as FunctionClient).functions.invoke("interpret-supplier-price-list", { body: { business_id: businessId, file_path: draft.path, mime_type: file.type || "application/octet-stream", file_format: draft.format } });
+      if (invoke.error) {
+        const detail = invoke.error.context ? await invoke.error.context.json().catch(() => null) as { error?: string } | null : null;
+        throw new Error(detail?.error ?? invoke.error.message);
       }
+      const response = invoke.data as { products?: VisualDetectedProduct[] } | null;
+      if (!response || !Array.isArray(response.products)) throw new Error("La interpretación visual devolvió una respuesta inválida.");
+      candidates.push(...toDetectedSupplierProducts(response.products));
       if (!candidates.length) throw new Error("No se detectaron productos. Revisá el archivo o corregí manualmente la lista.");
       const saved = await draft.db.rpc("save_supplier_price_list_items", { target_business_id: businessId, target_price_list_id: draft.id, detected_items: candidates });
       if (saved.error) throw new Error(`El archivo quedó como borrador, pero no se pudieron guardar los productos: ${saved.error.message}`);

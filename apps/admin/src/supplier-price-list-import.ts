@@ -53,7 +53,6 @@ export type VisualDetectedProduct = {
 export const supplierListLimits = {
   maxFileBytes: 20 * 1024 * 1024,
   maxPdfPages: 40,
-  visualBatchPages: 3,
 } as const;
 
 const normalize = (value: string) => value.trim().replace(/\s+/g, " ").toLocaleLowerCase("es-AR");
