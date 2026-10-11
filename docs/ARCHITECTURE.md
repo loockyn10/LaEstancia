@@ -87,3 +87,10 @@ Los comandos efectivamente verificados se registran en `CURRENT_STATE.md`.
 - La corrección versionada `20261007010100_dashboard_payment_methods_fix.sql` califica el agregado `totals.total_cents` dentro de la RPC, sin cambiar su contrato ni otras funciones.
 
 La configuración de navegador usa únicamente `VITE_SUPABASE_URL` y `VITE_SUPABASE_ANON_KEY`, cargadas desde el `.env.local` raíz mediante Vite. Nunca se usa `service_role` en el frontend. No se contempla offline-first inicialmente; tampoco Tauri, SQLite ni Docker.
+
+## Admin y POS separados
+
+- `apps/admin` permanece como superficie administrativa online-first. Sólo `owner` y `admin` pueden entrar; `staff` es redirigido al POS.
+- `apps/pos` es una única aplicación React/Vite instalable (PWA). Sus permisos cambian según la membresía: los tres roles pueden vender; sólo owner/admin reciben el enlace a Administración.
+- El POS reutiliza `confirm_sale`, precios efectivos, balances, barcodes y RPCs de caja. No duplica lógica comercial ni implementa todavía persistencia de ventas offline.
+- La separación visual no es autoridad: la migration `20261011000000_pos_staff_access.sql` limita RLS/RPCs de staff a catálogo/precio/stock operativo, sus ventas y caja abierta actual.

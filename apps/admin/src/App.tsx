@@ -84,6 +84,13 @@ type InventoryHistoryItem = {
 };
 
 const loginPath = "/login";
+const technicalLoginEmails: Record<string, string> = {
+  "dueño": "dueno@laestancia.local",
+  dueno: "dueno@laestancia.local",
+  admin: "admin@laestancia.local",
+  empleado: "empleado@laestancia.local",
+};
+const posUrl = () => import.meta.env.VITE_POS_URL?.trim() || "http://localhost:5174";
 const blankVariant = (): Variant => ({
   name: "Presentación única",
   sku: "",
@@ -252,7 +259,7 @@ function Badge({ active }: { active: boolean }) {
 }
 
 function Login() {
-  const [email, setEmail] = useState("");
+  const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -263,7 +270,7 @@ function Login() {
     setSubmitting(true);
     setError(null);
     const { error: loginError } = await supabase.auth.signInWithPassword({
-      email,
+      email: technicalLoginEmails[identifier.trim().toLocaleLowerCase("es-AR")] ?? identifier.trim(),
       password,
     });
     setSubmitting(false);
@@ -276,18 +283,17 @@ function Login() {
         <p className="eyebrow">La Estancia · Backoffice</p>
         <h1>Iniciar sesión</h1>
         <p className="message">
-          Ingresá con tu cuenta asignada para gestionar el catálogo.
+          Ingresá con tu usuario asignado o email. Los accesos iniciales usan dueño, admin o empleado.
         </p>
         <form className="login-form" onSubmit={(event) => void submit(event)}>
           <label>
-            Email
+            Usuario o email
             <input
-              autoComplete="email"
+              autoComplete="username"
               disabled={submitting}
-              onChange={(event) => setEmail(event.target.value)}
+              onChange={(event) => setIdentifier(event.target.value)}
               required
-              type="email"
-              value={email}
+              value={identifier}
             />
           </label>
           <label>
@@ -367,6 +373,7 @@ function Sidebar({
         </button>
         <p>{name}</p>
         <nav>
+          <button className="nav-item" onClick={() => window.location.assign(posUrl())} type="button">POS</button>
           {item("/", "Dashboard")}
           {item("/products", "Productos")}
           {item("/prices", "Precios")}
@@ -2120,6 +2127,7 @@ export function App() {
       ? { status: "configuration-error", message: configError }
       : { status: "resolving-session" },
   );
+  const authorizedRole = access.status === "authorized" ? access.role : undefined;
   const [userId, setUserId] = useState<string | null | undefined>(undefined);
   useEffect(() => {
     const client = getSupabaseClient();
@@ -2200,7 +2208,9 @@ export function App() {
       window.location.pathname === loginPath
     )
       navigate("/");
-  }, [access.status]);
+    if (authorizedRole === "staff")
+      window.location.replace(posUrl());
+  }, [access.status, authorizedRole]);
   async function logout() {
     const client = getSupabaseClient();
     if (!client) return;
@@ -2215,8 +2225,10 @@ export function App() {
   if (access.status === "resolving-access")
     return <Loading message="Verificando tu acceso…" />;
   if (access.status === "no-access") return <NoAccess onLogout={logout} />;
-  if (access.status === "authorized")
+  if (access.status === "authorized" && access.role !== "staff")
     return <Catalog {...access} onLogout={logout} />;
+  if (access.status === "authorized")
+    return <Loading message="El personal opera exclusivamente desde el POS." />;
   if (access.status === "error")
     return (
       <Loading message={`No se pudo resolver el acceso: ${access.message}`} />

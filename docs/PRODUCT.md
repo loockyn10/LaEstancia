@@ -4,6 +4,12 @@
 
 El producto será una plataforma de gestión para pet shops. El catálogo central único pertenece al negocio y se diseñará primero para la operación interna. Más adelante se reutilizará para POS, ecommerce y canales digitales.
 
+## Superficies de operación
+
+- Administración y POS son superficies distintas. Administración sigue online-first; POS es una PWA instalable preparada para un siguiente sprint offline-first.
+- Owner y admin pueden alternar entre ambas sin cerrar sesión. Staff sólo opera POS: búsqueda/escaneo, precio y oferta vigente, stock operativo, carrito, cobro y caja.
+- Costos, márgenes, proveedores, compras, listas de proveedores, importaciones y agregados financieros no se entregan a staff desde backend, además de no mostrarse en su interfaz.
+
 La primera UX funciona para un único negocio operativo, pero cada dato comercial futuro pertenecerá a un negocio. El acceso de un usuario se determina por una membresía activa en ese negocio; una sucursal pertenece siempre a un negocio.
 
 Stock y precios serán capacidades centrales. La UX debe priorizar simplicidad para usuarios no técnicos. Se contempla el uso de scanner y códigos de barras, y la importación de un catálogo existente será importante.

@@ -151,3 +151,11 @@
 **Motivo:** una lista debe poder inicializar y mantener automáticamente muchos precios, sin que una actualización de proveedor pise una decisión comercial manual ni un PVP de otro proveedor.
 
 **Consecuencias:** al aplicar una lista, una presentación nueva con PVP inicia siguiendo a ese proveedor; una sin PVP sigue sin precio. Una presentación existente se actualiza sólo si ya sigue a ese proveedor. La UI de precios escribe manualmente mediante RPC y ofrece volver a seguir un PVP sólo después de que administración elige entre los proveedores disponibles.
+
+## D020 — Admin y POS son superficies separadas
+
+**Decisión:** mantener una aplicación administrativa online-first y una única PWA POS instalable. Owner/admin usan ambas; staff usa sólo POS.
+
+**Motivo:** la operación de venta necesita una interfaz enfocada y una exposición mínima de datos, sin duplicar reglas comerciales.
+
+**Consecuencias:** la autorización se refuerza en RLS y RPCs, no en botones. El POS reutiliza `confirm_sale` y caja; IndexedDB, outbox y sincronización quedan para el sprint offline-first.

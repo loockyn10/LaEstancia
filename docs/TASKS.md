@@ -2,6 +2,9 @@
 
 ## Pendientes reales
 
+- Ejecutar de forma controlada `scripts/seed-initial-users.mjs` con `SUPABASE_SERVICE_ROLE_KEY` fuera del repositorio, después de confirmar que la política Auth admite las contraseñas transitorias de cuatro dígitos. Deben cambiarse antes de una operación real.
+- Implementar el siguiente sprint offline-first del POS: IndexedDB de catálogo, outbox idempotente, reconciliación y sincronización de stock.
+
 - Definir la política de naming y branding comercial, incluida la provisión del logo limpio definitivo.
 - Diseñar devolución/reversión auditable de ventas completed.
 - Definir pagos divididos cuando el flujo de caja lo requiera.
