@@ -1,5 +1,23 @@
 # Estado actual
 
+## POS local-first implementado localmente
+
+- `apps/pos` incorpora Dexie y una base IndexedDB versionada para contexto de acceso, sucursales, productos, presentaciones, barcodes, precios, ofertas vigentes, stock por sucursal y metadata de sincronización.
+- Con conexión, el POS autentica y resuelve business normalmente, descarga un snapshot operacional completo desde Supabase y lo reemplaza atómicamente por business. La UI busca, escanea, calcula el carrito y muestra precio/oferta/stock exclusivamente desde IndexedDB tanto online como offline.
+- El service worker precachea HTML, JS, CSS y assets locales mediante Workbox; no existe cache runtime de Supabase. Costos, márgenes, proveedores, compras y otros datos de Admin no forman parte del esquema local.
+- El arranque offline exige una sesión Supabase persistida aún vigente, contexto local del usuario y al menos una sincronización previa. Si falta el snapshot se muestra una instrucción explícita de primera sincronización; login nuevo, confirmación de venta, caja e historial reciente siguen requiriendo red.
+- No se agregó migration ni RPC: las policies y vistas existentes ya entregan exactamente el catálogo operacional requerido. No se ejecutó SQL remoto.
+- La validación local del sprint dejó 13 tests del POS en verde y también pasaron `pnpm check`, los builds individuales de POS/Admin y `git diff --check`. El build PWA generó `sw.js` con 8 recursos del app shell precacheados.
+
+### Smoke test manual offline
+
+1. Iniciar `pnpm --filter @pet-shop/pos dev`, abrir el POS con conexión e iniciar sesión.
+2. Esperar a que “Última sincronización” muestre fecha/hora, elegir una sucursal, buscar un producto por nombre/SKU y escanear un barcode conocido.
+3. En DevTools → Application, verificar `IndexedDB → la-estancia-pos`; en Network seleccionar `Offline`.
+4. Recargar la página. Debe conservar negocio/sucursal y permitir buscar, escanear, ver precio/oferta/stock conocido y agregar/modificar/quitar líneas del carrito sin requests a Supabase para esas lecturas.
+5. Confirmar que “COBRAR”, caja e historial online permanecen deshabilitados/no disponibles; volver a `Online` y usar “Sincronizar”.
+6. Para el caso inicial, borrar únicamente `IndexedDB → la-estancia-pos` (sin borrar Local Storage ni el service worker), mantener Network en `Offline` y recargar: debe aparecer “Este POS todavía no tiene datos locales. Conectate a internet para realizar la primera sincronización.”
+
 ## Versionado en el repositorio
 
 - Aplicadas mediante `pnpm dlx supabase db push --linked` las migrations `20261007010000_operational_dashboard.sql` y `20261007010100_dashboard_payment_methods_fix.sql`. Cada dry-run mostró exclusivamente la migration esperada, sin seeds, roles ni cambios adicionales; la segunda reemplaza sólo una referencia ambigua dentro de la RPC de medios de pago.
@@ -100,7 +118,7 @@ Después de Sprint 8, `pnpm check` y `git diff --check` volvieron a pasar con lo
 ## Pendiente
 
 - El repositorio contiene la estructura de Sprint POS: `apps/pos` como PWA Vite, login con identificadores simples sobre Supabase Auth, separación Admin/POS, script local idempotente para las tres identidades iniciales y una migration nueva de RLS/RPC. No se aplicó SQL remoto ni se ejecutó el seed durante este cambio.
-- El modo offline-first completo (IndexedDB de catálogo, outbox de ventas, reconciliación y sincronización de stock) permanece pendiente; esta entrega sólo cachea el app shell PWA.
+- La etapa transaccional offline permanece pendiente: ventas locales, outbox, reconciliación, conflictos y efectos definitivos sobre stock/caja. El catálogo operacional y el app shell ya funcionan local-first.
 
 - Las migrations de Listas de proveedores, incluida `20261009020000_supplier_pvp_price_source.sql`, figuran aplicadas en el proyecto enlazado y los tipos oficiales fueron regenerados. La matriz E2E de PVP quedó bloqueada por un bug real en `record_variant_pricing_history()`: en updates de `variant_costs` consulta `old.price_source`, una columna exclusiva de `variant_prices`; la transacción revirtió todos los fixtures aislados.
 - El importador local extrae texto de PDF por página y reconoce bloques repetidos de producto, código, EAN, costo/PVP, `valor x bulto` y unidades de venta. Conserva los candidatos locales y usa visión sólo en las páginas insuficientes; si falla una página, los candidatos previos se guardan como lista `reviewed` y la UI permite reintentar las páginas visuales. La Edge Function usa OpenAI Responses API directamente y requiere `OPENAI_API_KEY`; `SUPPLIER_LISTS_AI_MODEL` es opcional y por defecto usa `gpt-5.6-luna`. Descarga el privado con servicio y usa `input_file.file_data` base64 para PDF (máximo 20 MB); no depende de URLs firmadas. Sus errores devuelven y registran detalles OpenAI seguros. No hay credenciales configuradas ni se hizo escritura remota durante esta mejora.

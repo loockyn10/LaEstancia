@@ -86,7 +86,7 @@ Los comandos efectivamente verificados se registran en `CURRENT_STATE.md`.
 - El margen usa `sale_items.line_total_cents` y el último `variant_cost_history` con `changed_at <= sales.created_at`. Por eso se etiqueta como histórico estimado: no hay un snapshot de costo por línea ni asignación FIFO/promedio.
 - La corrección versionada `20261007010100_dashboard_payment_methods_fix.sql` califica el agregado `totals.total_cents` dentro de la RPC, sin cambiar su contrato ni otras funciones.
 
-La configuración de navegador usa únicamente `VITE_SUPABASE_URL` y `VITE_SUPABASE_ANON_KEY`, cargadas desde el `.env.local` raíz mediante Vite. Nunca se usa `service_role` en el frontend. No se contempla offline-first inicialmente; tampoco Tauri, SQLite ni Docker.
+La configuración de navegador usa únicamente `VITE_SUPABASE_URL` y `VITE_SUPABASE_ANON_KEY`, cargadas desde el `.env.local` raíz mediante Vite. Nunca se usa `service_role` en el frontend. No se contemplan Tauri, SQLite ni Docker.
 
 ## Admin y POS separados
 
@@ -94,3 +94,13 @@ La configuración de navegador usa únicamente `VITE_SUPABASE_URL` y `VITE_SUPAB
 - `apps/pos` es una única aplicación React/Vite instalable (PWA). Sus permisos cambian según la membresía: los tres roles pueden vender; sólo owner/admin reciben el enlace a Administración.
 - El POS reutiliza `confirm_sale`, precios efectivos, balances, barcodes y RPCs de caja. No duplica lógica comercial ni implementa todavía persistencia de ventas offline.
 - La separación visual no es autoridad: la migration `20261011000000_pos_staff_access.sql` limita RLS/RPCs de staff a catálogo/precio/stock operativo, sus ventas y caja abierta actual.
+
+## POS local-first para lectura operacional
+
+- Supabase continúa siendo la fuente de verdad central. Con conexión, una sincronización completa y encapsulada descarga el catálogo operativo permitido por RLS y reemplaza atómicamente el snapshot del business en IndexedDB mediante Dexie.
+- IndexedDB es la única fuente inmediata para sucursales, productos activos, presentaciones activas, barcodes, precio base/efectivo, oferta vigente y último stock conocido por sucursal. Los componentes React no consultan IndexedDB directamente: pasan por `apps/pos/src/local-db` y `apps/pos/src/sync`.
+- Cada fila local incluye `businessId`; stock agrega `branchId`, y el contexto cacheado usa la clave compuesta usuario/business. Todas las lecturas reciben el business y la sucursal explícitos para impedir mezcla entre contextos.
+- No se persisten costos, márgenes, proveedores, compras ni datos administrativos. Categorías y marcas tampoco se guardan porque el POS actual no las usa para navegación ni búsqueda.
+- El service worker de Vite PWA precachea solamente el app shell y assets locales. No existe runtime cache para respuestas de Supabase; los datos operativos viven en IndexedDB.
+- Una sesión Supabase persistida y no vencida, junto con un contexto y snapshot locales previos, permite abrir, buscar, escanear y armar el carrito sin red. Un inicio de sesión nuevo, confirmar ventas, operar caja e historial reciente siguen requiriendo conexión.
+- La arquitectura deja el límite `sync` separado para incorporar después ventas locales/outbox y reconciliación, pero este sprint no crea esas tablas ni confirma ventas offline.

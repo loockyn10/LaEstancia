@@ -1,6 +1,7 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import { VitePWA } from "vite-plugin-pwa";
+import { posPwaWorkbox } from "./src/pwa";
 
 export default defineConfig({
   envDir: "../..",
@@ -22,7 +23,7 @@ export default defineConfig({
           { src: "/icon.svg", sizes: "any", type: "image/svg+xml", purpose: "any maskable" },
         ],
       },
-      workbox: { navigateFallback: "/index.html" },
+      workbox: posPwaWorkbox,
     }),
   ],
 });

@@ -38,7 +38,7 @@
 
 **Motivo:** mantener el alcance inicial acotado.
 
-**Consecuencias:** la arquitectura no debe anticipar complejidad de sincronización sin una necesidad validada.
+**Consecuencias:** la arquitectura no debía anticipar complejidad de sincronización sin una necesidad validada. Esta decisión histórica queda supersedida para el POS por D021; Admin continúa online-first.
 
 ## D006 — Business como límite de ownership
 
@@ -159,3 +159,11 @@
 **Motivo:** la operación de venta necesita una interfaz enfocada y una exposición mínima de datos, sin duplicar reglas comerciales.
 
 **Consecuencias:** la autorización se refuerza en RLS y RPCs, no en botones. El POS reutiliza `confirm_sale` y caja; IndexedDB, outbox y sincronización quedan para el sprint offline-first.
+
+## D021 — IndexedDB como fuente de lectura inmediata del POS
+
+**Decisión:** adoptar Dexie sobre IndexedDB para el snapshot operacional del POS. Supabase sincroniza un catálogo completo por business y React lee siempre la copia local para búsqueda, barcode, precio, oferta y stock por sucursal. El service worker se limita al app shell.
+
+**Motivo:** el volumen actual permite una sincronización completa simple, auditable y reemplazable sin introducir prematuramente delta-sync, mientras una única ruta de lectura evita comportamientos distintos online/offline.
+
+**Consecuencias:** las filas locales quedan scopeadas por `businessId` y, para stock, `branchId`; el contexto se asocia al usuario autenticado. Sólo se guardan datos necesarios para cobrar y nunca costos, márgenes, proveedores ni compras. La sesión Supabase persistida debe seguir vigente para arrancar offline. Ventas, caja, outbox, conflictos y reconciliación permanecen online o pendientes para el siguiente sprint.

@@ -3,7 +3,7 @@
 ## Pendientes reales
 
 - Ejecutar de forma controlada `scripts/seed-initial-users.mjs` con `SUPABASE_SERVICE_ROLE_KEY` fuera del repositorio, después de confirmar que la política Auth admite las contraseñas transitorias de cuatro dígitos. Deben cambiarse antes de una operación real.
-- Implementar el siguiente sprint offline-first del POS: IndexedDB de catálogo, outbox idempotente, reconciliación y sincronización de stock.
+- Implementar el siguiente sprint transaccional offline del POS: ventas locales, outbox idempotente, reconciliación, conflictos y sincronización definitiva de stock/caja.
 
 - Definir la política de naming y branding comercial, incluida la provisión del logo limpio definitivo.
 - Diseñar devolución/reversión auditable de ventas completed.
@@ -51,6 +51,13 @@
 
 - Se aplicaron las migrations de Dashboard y su corrección focalizada de medios de pago; ambos dry-runs mostraron sólo los cambios esperados. Los tipos oficiales se regeneraron desde el esquema final.
 - La matriz `supabase/tests/20261007_sprint11_dashboard_e2e.sql` verificó agregados, filtros, stock, compras, caja, permisos, aislamiento y margen histórico con cantidades decimales. Finalizó mediante rollback y se confirmó que no quedaron fixtures `sprint11`.
+
+## Resuelto — Sprint Offline-first 1
+
+- `apps/pos` usa Dexie/IndexedDB como fuente inmediata de lectura para catálogo, barcode, precio efectivo, oferta vigente y último stock conocido por sucursal. La sincronización completa desde Supabase está encapsulada y reemplaza atómicamente sólo el business correspondiente.
+- El contexto local está asociado a usuario/business y todas las entidades operativas conservan `businessId`; stock conserva además `branchId`. No se persisten costos, márgenes, proveedores, compras ni tablas administrativas.
+- El app shell queda precacheado por Vite PWA sin cachear respuestas de Supabase. Con sesión Supabase vigente y una sincronización previa, el POS permite buscar, escanear y armar carrito offline; login nuevo, confirmación de venta y caja siguen online.
+- Los tests locales cubren sincronización, persistencia, búsqueda, barcode, precio/oferta/stock, reapertura sin red, primera apertura sin snapshot, aislamiento de business, ausencia de datos sensibles y configuración del app shell.
 
 ## Riesgos
 
