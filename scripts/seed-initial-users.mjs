@@ -6,9 +6,9 @@ const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 if (!url || !serviceRoleKey) throw new Error("Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY outside the repository.");
 const client = createClient(url, serviceRoleKey, { auth: { autoRefreshToken: false, persistSession: false } });
 const accounts = [
-  { identifier: "dueño", email: "dueno@laestancia.local", password: "1234", role: "owner", displayName: "dueño" },
-  { identifier: "admin", email: "admin@laestancia.local", password: "1234", role: "admin", displayName: "admin" },
-  { identifier: "empleado", email: "empleado@laestancia.local", password: "1111", role: "staff", displayName: "empleado" },
+  { identifier: "dueño", email: "dueno@laestancia.local", password: "123123", role: "owner", displayName: "dueño" },
+  { identifier: "admin", email: "admin@laestancia.local", password: "123123", role: "admin", displayName: "admin" },
+  { identifier: "empleado", email: "empleado@laestancia.local", password: "111111", role: "staff", displayName: "empleado" },
 ];
 async function userForEmail(email) {
   for (let page = 1; ; page += 1) {

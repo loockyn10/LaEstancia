@@ -76,6 +76,12 @@ function dashboardError(message?: string) {
   if (normalized.includes("branch")) return "La sucursal elegida no es válida para este negocio.";
   return "No pudimos cargar el dashboard. Intentá actualizar.";
 }
+function dashboardErrorForEnvironment(error: { code?: string; message?: string; details?: string | null; hint?: string | null }) {
+  const friendly = dashboardError(error.message);
+  if (!import.meta.env.DEV) return friendly;
+  const diagnostic = [error.code, error.message, error.details, error.hint].filter(Boolean).join(" · ");
+  return diagnostic ? `${friendly} [${diagnostic}]` : friendly;
+}
 
 export function Dashboard({ businessId, branches, role, navigate }: { businessId: string; branches: Branch[]; role: Role; navigate: (path: string) => void }) {
   const [preset, setPreset] = useState<RangePreset>("today");
@@ -115,7 +121,10 @@ export function Dashboard({ businessId, branches, role, navigate }: { businessId
       client.rpc("dashboard_cash_summary", { target_business_id: businessId, target_branch_id: branchId || undefined }),
     ]);
     const failure = overviewResult.error ?? paymentResult.error ?? productsResult.error ?? cashResult.error;
-    if (failure) setError(dashboardError(failure.message));
+    if (failure) {
+      if (import.meta.env.DEV) console.error("Dashboard RPC failed", failure);
+      setError(dashboardErrorForEnvironment(failure));
+    }
     else {
       setOverview((overviewResult.data?.[0] ?? null) as Overview | null);
       setPayments((paymentResult.data ?? []) as Payment[]);

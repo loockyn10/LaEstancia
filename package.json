@@ -9,5 +9,8 @@
     "typecheck": "pnpm -r --if-present run typecheck",
     "lint": "pnpm -r --if-present run lint",
     "check": "pnpm typecheck && pnpm lint && pnpm build"
+  },
+  "devDependencies": {
+    "@supabase/supabase-js": "2.49.1"
   }
 }
