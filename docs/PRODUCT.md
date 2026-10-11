@@ -44,7 +44,7 @@ Stock y precios serán capacidades centrales. La UX debe priorizar simplicidad p
 - Una lista de proveedor es un archivo comercial recibido, no una compra ni una actualización automática del catálogo. Conserva su original privado, proveedor, formato, fecha, estado y referencias de origen por hoja/fila o página cuando existen.
 - El producto de La Estancia y la oferta de un proveedor son entidades diferentes. Una oferta puede tener varias opciones de compra; un barcode ayuda a reconocer una presentación, pero nunca identifica por sí solo una opción de compra.
 - Las opciones registran unidad de compra, contenido de stock, precio, unidades pagadas y bonificadas. El costo efectivo unitario se calcula como `precio × pagadas / ((pagadas + bonificadas) × contenido)` y se revisa antes de aplicar.
-- El PVP sugerido por el proveedor es informativo: no modifica el precio de venta de La Estancia.
+- El PVP sugerido queda guardado como referencia de la oferta del proveedor. Al aplicar una lista, puede inicializar el precio de venta de una presentación nueva y actualizar una existente sólo si esa presentación sigue explícitamente el PVP de ese mismo proveedor. Un precio manual nunca se pisa; administración puede volver a elegir un proveedor para seguir su último PVP aplicado.
 - Owner/admin revisan matching, correcciones y preview antes de aplicar mediante una operación de backend auditable. El `supplier_code` confirmado queda vinculado a la presentación para reconocer listas futuras. Staff sólo puede consultar encabezados, sin acceso a costos.
 
 ## Importación de catálogo

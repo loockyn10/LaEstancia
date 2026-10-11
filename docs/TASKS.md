@@ -5,7 +5,7 @@
 - Definir la política de naming y branding comercial, incluida la provisión del logo limpio definitivo.
 - Diseñar devolución/reversión auditable de ventas completed.
 - Definir pagos divididos cuando el flujo de caja lo requiera.
-- Aplicar y verificar remotamente la migration de Listas de proveedores (`20261008000000_supplier_price_lists.sql`), regenerar tipos y ejecutar una matriz aislada. El dry-run remoto quedó bloqueado por permisos de la cuenta de Supabase (403), por lo que no se aplicó ningún cambio remoto.
+- La migration de Listas de proveedores y `20261009020000_supplier_pvp_price_source.sql` están aplicadas remotamente, y los tipos oficiales fueron regenerados. La matriz aislada de PVP detectó un bug en `record_variant_pricing_history()`: el trigger reutilizado para `variant_costs` intenta leer `old.price_source`; los fixtures se revirtieron y falta una migration correctiva antes de reejecutarla.
 - Antes de habilitar importación visual en producción, desplegar `interpret-supplier-price-list` y configurar `OPENAI_API_KEY`; `SUPPLIER_LISTS_AI_MODEL` es opcional y por defecto usa `gpt-5.6-luna`. La función usa OpenAI Responses API con Structured Outputs `supplier_price_list_candidates_v1`. La extracción determinística de imágenes ancladas en XLSX continúa pendiente: `read-excel-file` lee celdas/hojas pero no expone drawings/media anclados.
 
 ## Resuelto — Sprint 1

@@ -142,4 +142,12 @@
 
 **Motivo:** un precio listado, un barcode o una inferencia visual no son autoridad para cambiar catálogo, ventas o stock. Las opciones de compra pueden compartir EAN y diferir en código, contenido o bonificación.
 
-**Consecuencias:** `supplier_code` es el vínculo persistente prioritario; barcode sólo propone matching. El costo efectivo se calcula con pagadas, bonificadas y contenido, el PVP queda informativo y el precio de venta no se actualiza. La interpretación visual exige una frontera server-side configurada y nunca escribe directamente.
+**Consecuencias:** `supplier_code` es el vínculo persistente prioritario; barcode sólo propone matching. El costo efectivo se calcula con pagadas, bonificadas y contenido. El PVP queda conservado por oferta y puede alimentar el precio base sólo mediante la aplicación revisada de una lista. La interpretación visual exige una frontera server-side configurada y nunca escribe directamente.
+
+## D019 — Precio base con origen manual o PVP de proveedor
+
+**Decisión:** `variant_prices` conserva `price_source` (`manual` o `supplier_pvp`) y, para el segundo caso, el proveedor elegido. Los precios previos a esta decisión se consideran manuales. El historial replica el origen y proveedor de cada evento de precio.
+
+**Motivo:** una lista debe poder inicializar y mantener automáticamente muchos precios, sin que una actualización de proveedor pise una decisión comercial manual ni un PVP de otro proveedor.
+
+**Consecuencias:** al aplicar una lista, una presentación nueva con PVP inicia siguiendo a ese proveedor; una sin PVP sigue sin precio. Una presentación existente se actualiza sólo si ya sigue a ese proveedor. La UI de precios escribe manualmente mediante RPC y ofrece volver a seguir un PVP sólo después de que administración elige entre los proveedores disponibles.

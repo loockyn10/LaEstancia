@@ -12,31 +12,6 @@ export type Database = {
   __InternalSupabase: {
     PostgrestVersion: "14.18"
   }
-  graphql_public: {
-    Tables: {
-      [_ in never]: never
-    }
-    Views: {
-      [_ in never]: never
-    }
-    Functions: {
-      graphql: {
-        Args: {
-          extensions?: Json
-          operationName?: string
-          query?: string
-          variables?: Json
-        }
-        Returns: Json
-      }
-    }
-    Enums: {
-      [_ in never]: never
-    }
-    CompositeTypes: {
-      [_ in never]: never
-    }
-  }
   public: {
     Tables: {
       branches: {
@@ -858,6 +833,300 @@ export type Database = {
           },
         ]
       }
+      supplier_catalog_items: {
+        Row: {
+          apply_to_catalog: boolean
+          barcode: string | null
+          business_id: string
+          confidence: number | null
+          create_catalog_product: boolean
+          created_at: string
+          detected_brand: string | null
+          detected_category: string | null
+          detected_name: string
+          detected_presentation: string | null
+          detected_sku: string | null
+          id: string
+          image_path: string | null
+          match_reason: string | null
+          match_status: Database["public"]["Enums"]["supplier_match_status"]
+          price_list_id: string
+          product_variant_id: string | null
+          source_reference: Json
+          suggested_retail_price_cents: number | null
+          supplier_code: string | null
+          supplier_id: string
+          updated_at: string
+          warnings: Json
+        }
+        Insert: {
+          apply_to_catalog?: boolean
+          barcode?: string | null
+          business_id: string
+          confidence?: number | null
+          create_catalog_product?: boolean
+          created_at?: string
+          detected_brand?: string | null
+          detected_category?: string | null
+          detected_name: string
+          detected_presentation?: string | null
+          detected_sku?: string | null
+          id?: string
+          image_path?: string | null
+          match_reason?: string | null
+          match_status?: Database["public"]["Enums"]["supplier_match_status"]
+          price_list_id: string
+          product_variant_id?: string | null
+          source_reference?: Json
+          suggested_retail_price_cents?: number | null
+          supplier_code?: string | null
+          supplier_id: string
+          updated_at?: string
+          warnings?: Json
+        }
+        Update: {
+          apply_to_catalog?: boolean
+          barcode?: string | null
+          business_id?: string
+          confidence?: number | null
+          create_catalog_product?: boolean
+          created_at?: string
+          detected_brand?: string | null
+          detected_category?: string | null
+          detected_name?: string
+          detected_presentation?: string | null
+          detected_sku?: string | null
+          id?: string
+          image_path?: string | null
+          match_reason?: string | null
+          match_status?: Database["public"]["Enums"]["supplier_match_status"]
+          price_list_id?: string
+          product_variant_id?: string | null
+          source_reference?: Json
+          suggested_retail_price_cents?: number | null
+          supplier_code?: string | null
+          supplier_id?: string
+          updated_at?: string
+          warnings?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "supplier_catalog_items_price_list_id_supplier_id_business__fkey"
+            columns: ["price_list_id", "supplier_id", "business_id"]
+            isOneToOne: false
+            referencedRelation: "supplier_price_lists"
+            referencedColumns: ["id", "supplier_id", "business_id"]
+          },
+          {
+            foreignKeyName: "supplier_catalog_items_product_variant_id_business_id_fkey"
+            columns: ["product_variant_id", "business_id"]
+            isOneToOne: false
+            referencedRelation: "product_variants"
+            referencedColumns: ["id", "business_id"]
+          },
+        ]
+      }
+      supplier_price_lists: {
+        Row: {
+          applied_at: string | null
+          applied_by: string | null
+          business_id: string
+          created_at: string
+          created_by: string
+          file_format: string
+          file_name: string
+          file_path: string
+          id: string
+          list_date: string | null
+          mime_type: string
+          status: Database["public"]["Enums"]["supplier_price_list_status"]
+          supplier_id: string
+          updated_at: string
+        }
+        Insert: {
+          applied_at?: string | null
+          applied_by?: string | null
+          business_id: string
+          created_at?: string
+          created_by: string
+          file_format: string
+          file_name: string
+          file_path: string
+          id?: string
+          list_date?: string | null
+          mime_type: string
+          status?: Database["public"]["Enums"]["supplier_price_list_status"]
+          supplier_id: string
+          updated_at?: string
+        }
+        Update: {
+          applied_at?: string | null
+          applied_by?: string | null
+          business_id?: string
+          created_at?: string
+          created_by?: string
+          file_format?: string
+          file_name?: string
+          file_path?: string
+          id?: string
+          list_date?: string | null
+          mime_type?: string
+          status?: Database["public"]["Enums"]["supplier_price_list_status"]
+          supplier_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "supplier_price_lists_applied_by_fkey"
+            columns: ["applied_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "supplier_price_lists_business_id_fkey"
+            columns: ["business_id"]
+            isOneToOne: false
+            referencedRelation: "businesses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "supplier_price_lists_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "supplier_price_lists_supplier_id_business_id_fkey"
+            columns: ["supplier_id", "business_id"]
+            isOneToOne: false
+            referencedRelation: "suppliers"
+            referencedColumns: ["id", "business_id"]
+          },
+        ]
+      }
+      supplier_product_links: {
+        Row: {
+          business_id: string
+          created_at: string
+          created_by: string
+          id: string
+          product_variant_id: string
+          supplier_code: string
+          supplier_id: string
+          updated_at: string
+        }
+        Insert: {
+          business_id: string
+          created_at?: string
+          created_by: string
+          id?: string
+          product_variant_id: string
+          supplier_code: string
+          supplier_id: string
+          updated_at?: string
+        }
+        Update: {
+          business_id?: string
+          created_at?: string
+          created_by?: string
+          id?: string
+          product_variant_id?: string
+          supplier_code?: string
+          supplier_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "supplier_product_links_business_id_fkey"
+            columns: ["business_id"]
+            isOneToOne: false
+            referencedRelation: "businesses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "supplier_product_links_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "supplier_product_links_product_variant_id_business_id_fkey"
+            columns: ["product_variant_id", "business_id"]
+            isOneToOne: false
+            referencedRelation: "product_variants"
+            referencedColumns: ["id", "business_id"]
+          },
+          {
+            foreignKeyName: "supplier_product_links_supplier_id_business_id_fkey"
+            columns: ["supplier_id", "business_id"]
+            isOneToOne: false
+            referencedRelation: "suppliers"
+            referencedColumns: ["id", "business_id"]
+          },
+        ]
+      }
+      supplier_purchase_options: {
+        Row: {
+          business_id: string
+          catalog_item_id: string
+          created_at: string
+          effective_unit_cost_cents: number | null
+          id: string
+          is_selected: boolean
+          purchase_price_cents: number
+          purchase_unit: string
+          purchase_unit_label: string | null
+          stock_units_per_purchase: number
+          supplier_code: string | null
+          units_bonus: number
+          units_paid: number
+          updated_at: string
+        }
+        Insert: {
+          business_id: string
+          catalog_item_id: string
+          created_at?: string
+          effective_unit_cost_cents?: number | null
+          id?: string
+          is_selected?: boolean
+          purchase_price_cents: number
+          purchase_unit: string
+          purchase_unit_label?: string | null
+          stock_units_per_purchase: number
+          supplier_code?: string | null
+          units_bonus?: number
+          units_paid?: number
+          updated_at?: string
+        }
+        Update: {
+          business_id?: string
+          catalog_item_id?: string
+          created_at?: string
+          effective_unit_cost_cents?: number | null
+          id?: string
+          is_selected?: boolean
+          purchase_price_cents?: number
+          purchase_unit?: string
+          purchase_unit_label?: string | null
+          stock_units_per_purchase?: number
+          supplier_code?: string | null
+          units_bonus?: number
+          units_paid?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "supplier_purchase_options_catalog_item_id_business_id_fkey"
+            columns: ["catalog_item_id", "business_id"]
+            isOneToOne: false
+            referencedRelation: "supplier_catalog_items"
+            referencedColumns: ["id", "business_id"]
+          },
+        ]
+      }
       suppliers: {
         Row: {
           business_id: string
@@ -1040,6 +1309,8 @@ export type Database = {
           changed_at: string
           changed_by: string | null
           id: string
+          price_source: string | null
+          supplier_id: string | null
           variant_id: string
         }
         Insert: {
@@ -1048,6 +1319,8 @@ export type Database = {
           changed_at?: string
           changed_by?: string | null
           id?: string
+          price_source?: string | null
+          supplier_id?: string | null
           variant_id: string
         }
         Update: {
@@ -1056,6 +1329,8 @@ export type Database = {
           changed_at?: string
           changed_by?: string | null
           id?: string
+          price_source?: string | null
+          supplier_id?: string | null
           variant_id?: string
         }
         Relationships: [
@@ -1080,6 +1355,8 @@ export type Database = {
           amount_cents: number
           business_id: string
           created_at: string
+          price_source: string
+          supplier_id: string | null
           updated_at: string
           variant_id: string
         }
@@ -1087,6 +1364,8 @@ export type Database = {
           amount_cents: number
           business_id: string
           created_at?: string
+          price_source?: string
+          supplier_id?: string | null
           updated_at?: string
           variant_id: string
         }
@@ -1094,10 +1373,19 @@ export type Database = {
           amount_cents?: number
           business_id?: string
           created_at?: string
+          price_source?: string
+          supplier_id?: string | null
           updated_at?: string
           variant_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "variant_prices_supplier_business_fkey"
+            columns: ["supplier_id", "business_id"]
+            isOneToOne: false
+            referencedRelation: "suppliers"
+            referencedColumns: ["id", "business_id"]
+          },
           {
             foreignKeyName: "variant_prices_variant_id_business_id_fkey"
             columns: ["variant_id", "business_id"]
@@ -1142,6 +1430,14 @@ export type Database = {
         Returns: {
           amount_cents: number
           variant_id: string
+        }[]
+      }
+      apply_supplier_price_list: {
+        Args: { target_business_id: string; target_price_list_id: string }
+        Returns: {
+          catalog_item_id: string
+          effective_unit_cost_cents: number
+          product_variant_id: string
         }[]
       }
       close_cash_session: {
@@ -1253,6 +1549,24 @@ export type Database = {
           quantity: number
           revenue_cents: number
           variant_name: string
+        }[]
+      }
+      follow_supplier_pvp: {
+        Args: {
+          target_business_id: string
+          target_supplier_id: string
+          target_variant_id: string
+        }
+        Returns: number
+      }
+      get_variant_supplier_pvps: {
+        Args: { target_business_id: string; target_variant_id: string }
+        Returns: {
+          applied_at: string
+          price_list_id: string
+          pvp_cents: number
+          supplier_id: string
+          supplier_name: string
         }[]
       }
       has_active_business_membership: {
@@ -1407,6 +1721,14 @@ export type Database = {
           resulting_quantity: number
         }[]
       }
+      save_supplier_price_list_items: {
+        Args: {
+          detected_items: Json
+          target_business_id: string
+          target_price_list_id: string
+        }
+        Returns: number
+      }
       set_inventory_minimum: {
         Args: {
           target_branch_id: string
@@ -1418,6 +1740,14 @@ export type Database = {
           minimum_quantity: number
           quantity: number
         }[]
+      }
+      set_variant_base_price: {
+        Args: {
+          target_amount_cents: number
+          target_business_id: string
+          target_variant_id: string
+        }
+        Returns: undefined
       }
     }
     Enums: {
@@ -1434,6 +1764,12 @@ export type Database = {
       purchase_status: "draft" | "confirmed" | "cancelled"
       sale_payment_method: "cash" | "debit" | "credit" | "transfer" | "other"
       sale_status: "completed"
+      supplier_match_status:
+        | "unmatched"
+        | "matched"
+        | "review_required"
+        | "invalid"
+      supplier_price_list_status: "draft" | "reviewed" | "applied"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -1559,9 +1895,6 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
-  graphql_public: {
-    Enums: {},
-  },
   public: {
     Enums: {
       business_role: ["owner", "admin", "staff"],
@@ -1578,6 +1911,13 @@ export const Constants = {
       purchase_status: ["draft", "confirmed", "cancelled"],
       sale_payment_method: ["cash", "debit", "credit", "transfer", "other"],
       sale_status: ["completed"],
+      supplier_match_status: [
+        "unmatched",
+        "matched",
+        "review_required",
+        "invalid",
+      ],
+      supplier_price_list_status: ["draft", "reviewed", "applied"],
     },
   },
 } as const

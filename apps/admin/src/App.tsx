@@ -1012,6 +1012,8 @@ type PricingRow = {
   variantName: string;
   sku: string;
   price: number | null;
+  priceSource: "manual" | "supplier_pvp" | null;
+  priceSupplierId: string | null;
   cost: number | null;
   effectivePrice: number | null;
   currentOffer: Offer | null;
@@ -1022,7 +1024,11 @@ type HistoryItem = {
   amount_cents: number | null;
   changed_at: string;
   changed_by: string | null;
+  price_source?: "manual" | "supplier_pvp" | null;
 };
+type SupplierPvpOption = { supplier_id: string; supplier_name: string; pvp_cents: number; price_list_id: string; applied_at: string };
+type PricingRpcClient = { rpc: (name: string, args: Record<string, unknown>) => Promise<{ data: unknown; error: PostgrestError | null }> };
+const priceSourceLabel = (source: PricingRow["priceSource"]) => source === "supplier_pvp" ? "PVP proveedor" : source === "manual" ? "Manual" : "Sin precio";
 
 function Pricing({
   businessId,
@@ -1036,6 +1042,7 @@ function Pricing({
   role: Role;
 }) {
   const [prices, setPrices] = useState<Record<string, number>>({});
+  const [priceSources, setPriceSources] = useState<Record<string, { source: "manual" | "supplier_pvp"; supplierId: string | null }>>({});
   const [costs, setCosts] = useState<Record<string, number>>({});
   const [effectivePrices, setEffectivePrices] = useState<Record<string, number>>({});
   const [offers, setOffers] = useState<Offer[]>([]);
@@ -1058,6 +1065,10 @@ function Pricing({
   const [offerEndsAt, setOfferEndsAt] = useState("");
   const [offerActive, setOfferActive] = useState(true);
   const [offerSaving, setOfferSaving] = useState(false);
+  const [followTarget, setFollowTarget] = useState<PricingRow | null>(null);
+  const [supplierPvpOptions, setSupplierPvpOptions] = useState<SupplierPvpOption[]>([]);
+  const [followSupplierId, setFollowSupplierId] = useState("");
+  const [followSaving, setFollowSaving] = useState(false);
 
   const loadPricing = useCallback(async () => {
     const supabase = getSupabaseClient();
@@ -1065,7 +1076,7 @@ function Pricing({
     setLoading(true);
     setError(null);
     const [priceResult, offerResult, effectiveResult] = await Promise.all([
-      supabase.from("variant_prices").select("variant_id,amount_cents").eq("business_id", businessId),
+      supabase.from("variant_prices").select("variant_id,amount_cents,price_source,supplier_id").eq("business_id", businessId),
       supabase.from("variant_offers").select("id,variant_id,promotional_price_cents,starts_at,ends_at,active").eq("business_id", businessId).order("starts_at", { ascending: false }),
       supabase.from("variant_effective_prices").select("variant_id,effective_price_cents").eq("business_id", businessId),
     ]);
@@ -1088,7 +1099,9 @@ function Pricing({
       setLoading(false);
       return;
     }
-    setPrices(Object.fromEntries((priceResult.data ?? []).map((item) => [item.variant_id, item.amount_cents])));
+    const priceRows = (priceResult.data ?? []) as unknown as Array<{ variant_id: string; amount_cents: number; price_source?: "manual" | "supplier_pvp"; supplier_id?: string | null }>;
+    setPrices(Object.fromEntries(priceRows.map((item) => [item.variant_id, item.amount_cents])));
+    setPriceSources(Object.fromEntries(priceRows.map((item) => [item.variant_id, { source: item.price_source ?? "manual", supplierId: item.supplier_id ?? null }])));
     setOffers(offerResult.data ?? []);
     setEffectivePrices(Object.fromEntries((effectiveResult.data ?? []).flatMap((item) => item.variant_id && item.effective_price_cents !== null ? [[item.variant_id, item.effective_price_cents]] : [])));
     setCosts(Object.fromEntries((costResult.data ?? []).map((item) => [item.variant_id, item.amount_cents])));
@@ -1106,19 +1119,22 @@ function Pricing({
           .map((variant) => {
             const currentOffer = offers.find((offer) => offer.variant_id === variant.id && offerStatus(offer) === "Vigente") ?? null;
             const price = prices[variant.id] ?? null;
+            const priceSource = priceSources[variant.id];
             return {
               variantId: variant.id,
               productName: product.name,
               variantName: variant.name,
               sku: variant.sku,
               price,
+              priceSource: price === null ? null : priceSource?.source ?? "manual",
+              priceSupplierId: priceSource?.supplierId ?? null,
               cost: canEdit ? (costs[variant.id] ?? null) : null,
               currentOffer,
               effectivePrice: effectivePrices[variant.id] ?? price,
             };
           }),
       ),
-    [canEdit, costs, effectivePrices, offers, prices, products],
+    [canEdit, costs, effectivePrices, offers, priceSources, prices, products],
   );
   const selectedRows = rows.filter((row) => selected.includes(row.variantId));
   const adjustment = parsePercent(percentInput);
@@ -1149,10 +1165,9 @@ function Pricing({
     if (!supabase) return;
     setSaving(true);
     setError(null);
+    const pricingRpc = supabase as unknown as PricingRpcClient;
     const writes = [
-      parsedPrice === null
-        ? supabase.from("variant_prices").delete().eq("variant_id", editing.variantId).eq("business_id", businessId)
-        : supabase.from("variant_prices").upsert({ variant_id: editing.variantId, business_id: businessId, amount_cents: parsedPrice }, { onConflict: "variant_id" }),
+      pricingRpc.rpc("set_variant_base_price", { target_business_id: businessId, target_variant_id: editing.variantId, target_amount_cents: parsedPrice }),
       parsedCost === null
         ? supabase.from("variant_costs").delete().eq("variant_id", editing.variantId).eq("business_id", businessId)
         : supabase.from("variant_costs").upsert({ variant_id: editing.variantId, business_id: businessId, amount_cents: parsedCost }, { onConflict: "variant_id" }),
@@ -1214,14 +1229,14 @@ function Pricing({
     setHistoryLoading(true);
     setError(null);
     const [priceResult, costResult] = await Promise.all([
-      supabase.from("variant_price_history").select("id,amount_cents,changed_at,changed_by").eq("business_id", businessId).eq("variant_id", row.variantId).order("changed_at", { ascending: false }),
+      supabase.from("variant_price_history").select("id,amount_cents,changed_at,changed_by,price_source").eq("business_id", businessId).eq("variant_id", row.variantId).order("changed_at", { ascending: false }),
       supabase.from("variant_cost_history").select("id,amount_cents,changed_at,changed_by").eq("business_id", businessId).eq("variant_id", row.variantId).order("changed_at", { ascending: false }),
     ]);
     setHistoryLoading(false);
     const failure = priceResult.error ?? costResult.error;
     if (failure) return setError(humanError(failure));
     setHistory([
-      ...(priceResult.data ?? []).map((item) => ({ ...item, type: "Precio" as const })),
+      ...((priceResult.data ?? []) as unknown as Array<Omit<HistoryItem, "type">>).map((item) => ({ ...item, type: "Precio" as const })),
       ...(costResult.data ?? []).map((item) => ({ ...item, type: "Costo" as const })),
     ].sort((left, right) => right.changed_at.localeCompare(left.changed_at)));
   }
@@ -1242,6 +1257,33 @@ function Pricing({
     setSelected([]);
     setPercentInput("");
     setNotice("La actualización masiva se aplicó correctamente.");
+    await loadPricing();
+  }
+  async function openFollowSupplierPvp(row: PricingRow) {
+    if (!canEdit) return;
+    const supabase = getSupabaseClient();
+    if (!supabase) return;
+    setError(null);
+    setNotice(null);
+    const result = await (supabase as unknown as PricingRpcClient).rpc("get_variant_supplier_pvps", { target_business_id: businessId, target_variant_id: row.variantId });
+    if (result.error) return setError(humanError(result.error));
+    const choices = (result.data ?? []) as SupplierPvpOption[];
+    if (!choices.length) return setError("No hay un PVP aplicado de proveedor para esta presentación.");
+    setFollowTarget(row);
+    setSupplierPvpOptions(choices);
+    setFollowSupplierId(row.priceSource === "supplier_pvp" && row.priceSupplierId && choices.some((choice) => choice.supplier_id === row.priceSupplierId) ? row.priceSupplierId : choices[0].supplier_id);
+  }
+  async function followSupplierPvp() {
+    if (!followTarget || !followSupplierId) return;
+    const supabase = getSupabaseClient();
+    if (!supabase) return;
+    setFollowSaving(true);
+    setError(null);
+    const result = await (supabase as unknown as PricingRpcClient).rpc("follow_supplier_pvp", { target_business_id: businessId, target_variant_id: followTarget.variantId, target_supplier_id: followSupplierId });
+    setFollowSaving(false);
+    if (result.error) return setError(humanError(result.error));
+    setFollowTarget(null);
+    setNotice("El precio volvió a seguir el PVP del proveedor seleccionado.");
     await loadPricing();
   }
   const toggleSelected = (variantId: string) =>
@@ -1285,15 +1327,15 @@ function Pricing({
       {loading ? <StateBox title="Cargando precios…" /> : !rows.length ? <StateBox title="Todavía no hay presentaciones" text="Cuando cargues productos con presentaciones, vas a poder definir sus precios acá." /> : (
         <div className="table-wrap">
           <table>
-            <thead><tr>{canEdit && <th aria-label="Seleccionar" />}<th>Producto</th><th>Presentación</th><th>SKU</th><th>Precio normal</th><th>Oferta vigente</th><th>Precio efectivo</th>{canEdit && <><th>Costo</th><th>Ganancia bruta</th><th>Margen bruto</th><th /></>}</tr></thead>
+            <thead><tr>{canEdit && <th aria-label="Seleccionar" />}<th>Producto</th><th>Presentación</th><th>SKU</th><th>Precio normal</th><th>Origen</th><th>Oferta vigente</th><th>Precio efectivo</th>{canEdit && <><th>Costo</th><th>Ganancia bruta</th><th>Margen bruto</th><th /></>}</tr></thead>
             <tbody>{rows.map((row) => {
               const hasMargin = row.price !== null && row.cost !== null;
               const grossProfit = hasMargin ? row.price! - row.cost! : null;
               const margin = hasMargin && row.price! > 0 ? (grossProfit! / row.price!) * 100 : null;
               return <tr key={row.variantId}>
                 {canEdit && <td><input aria-label={`Seleccionar ${row.productName} ${row.variantName}`} checked={selected.includes(row.variantId)} disabled={row.price === null} onChange={() => toggleSelected(row.variantId)} type="checkbox" /></td>}
-                <td><strong>{row.productName}</strong></td><td>{row.variantName}</td><td>{row.sku || "—"}</td><td>{formatPesos(row.price)}</td><td>{row.currentOffer ? <span><strong>{formatPesos(row.currentOffer.promotional_price_cents)}</strong><br /><small>{formatDateRange(row.currentOffer.starts_at, row.currentOffer.ends_at)}</small></span> : "—"}</td><td><strong>{formatPesos(row.effectivePrice)}</strong></td>
-                {canEdit && <><td>{formatPesos(row.cost)}</td><td>{grossProfit === null ? "Sin datos" : formatPesos(grossProfit)}</td><td>{margin === null ? "Sin datos" : `${margin.toLocaleString("es-AR", { maximumFractionDigits: 1 })} %`}</td><td><div className="actions"><button className="link-button" onClick={() => startEdit(row)} type="button">Importes</button><button className="link-button" onClick={() => openOffer(row)} type="button">Nueva oferta</button><button className="link-button" onClick={() => void openHistory(row)} type="button">Historial</button></div></td></>}
+                <td><strong>{row.productName}</strong></td><td>{row.variantName}</td><td>{row.sku || "—"}</td><td>{formatPesos(row.price)}</td><td>{priceSourceLabel(row.priceSource)}</td><td>{row.currentOffer ? <span><strong>{formatPesos(row.currentOffer.promotional_price_cents)}</strong><br /><small>{formatDateRange(row.currentOffer.starts_at, row.currentOffer.ends_at)}</small></span> : "—"}</td><td><strong>{formatPesos(row.effectivePrice)}</strong></td>
+                {canEdit && <><td>{formatPesos(row.cost)}</td><td>{grossProfit === null ? "Sin datos" : formatPesos(grossProfit)}</td><td>{margin === null ? "Sin datos" : `${margin.toLocaleString("es-AR", { maximumFractionDigits: 1 })} %`}</td><td><div className="actions"><button className="link-button" onClick={() => startEdit(row)} type="button">Importes</button><button className="link-button" onClick={() => void openFollowSupplierPvp(row)} type="button">Seguir PVP</button><button className="link-button" onClick={() => openOffer(row)} type="button">Nueva oferta</button><button className="link-button" onClick={() => void openHistory(row)} type="button">Historial</button></div></td></>}
               </tr>;
             })}</tbody>
           </table>
@@ -1302,7 +1344,8 @@ function Pricing({
       {!loading && offers.length > 0 && <section className="offer-list"><header className="section-header"><div><h2>Ofertas programadas</h2><p>Una oferta desactivada, futura o vencida nunca reemplaza el precio base.</p></div></header><div className="table-wrap"><table><thead><tr><th>Presentación</th><th>Precio promocional</th><th>Vigencia</th><th>Estado</th>{canEdit && <th />}</tr></thead><tbody>{offers.map((offer) => { const row = rows.find((item) => item.variantId === offer.variant_id); return <tr key={offer.id}><td>{row ? <><strong>{row.productName}</strong><br /><span className="muted">{row.variantName}</span></> : "Presentación no disponible"}</td><td>{formatPesos(offer.promotional_price_cents)}</td><td>{formatDateRange(offer.starts_at, offer.ends_at)}</td><td><span className={`offer-status ${offerStatusClass(offer)}`}>{offerStatus(offer)}</span></td>{canEdit && <td>{row && <button className="link-button" onClick={() => openOffer(row, offer)} type="button">Editar</button>}</td>}</tr>; })}</tbody></table></div></section>}
       {editing && <div className="modal-backdrop" role="presentation"><section aria-modal="true" className="modal" role="dialog"><header className="section-header"><div><h2>Editar importes</h2><p>{editing.productName} · {editing.variantName}</p></div><button className="secondary compact" disabled={saving} onClick={() => setEditing(null)} type="button">Cerrar</button></header><form className="grid" onSubmit={(event) => void saveIndividual(event)}><label>Precio de venta<input autoFocus inputMode="decimal" onChange={(event) => setPriceInput(event.target.value)} placeholder="Ej. 12500,50" value={priceInput} /></label><label>Costo<input inputMode="decimal" onChange={(event) => setCostInput(event.target.value)} placeholder="Ej. 8000" value={costInput} /></label><p className="muted wide">Dejá un campo vacío para quitar su importe actual.</p><div className="form-actions wide"><button disabled={saving} type="submit">{saving ? "Guardando…" : "Guardar importes"}</button><button className="secondary" disabled={saving} onClick={() => setEditing(null)} type="button">Cancelar</button></div></form></section></div>}
       {offerTarget && <div className="modal-backdrop" role="presentation"><section aria-modal="true" className="modal" role="dialog"><header className="section-header"><div><h2>{offerTarget.offer ? "Editar oferta" : "Nueva oferta"}</h2><p>{offerTarget.row.productName} · {offerTarget.row.variantName}</p></div><button className="secondary compact" disabled={offerSaving} onClick={() => setOfferTarget(null)} type="button">Cerrar</button></header><form className="grid" onSubmit={(event) => void saveOffer(event)}><p className="notice wide">Precio normal: <strong>{formatPesos(offerTarget.row.price)}</strong>. La oferta no modifica este importe.</p><label>Precio promocional<input autoFocus inputMode="decimal" onChange={(event) => setOfferPriceInput(event.target.value)} placeholder="Ej. 12500,50" required value={offerPriceInput} /></label><label>Inicio<input onChange={(event) => setOfferStartsAt(event.target.value)} required type="datetime-local" value={offerStartsAt} /></label><label>Fin (opcional)<input min={offerStartsAt || undefined} onChange={(event) => setOfferEndsAt(event.target.value)} type="datetime-local" value={offerEndsAt} /></label><label className="check"> <input checked={offerActive} onChange={(event) => setOfferActive(event.target.checked)} type="checkbox" /> Activa</label><p className="muted wide">No podés guardar dos ofertas activas que se superpongan para la misma presentación.</p><div className="form-actions wide"><button disabled={offerSaving} type="submit">{offerSaving ? "Guardando…" : "Guardar oferta"}</button><button className="secondary" disabled={offerSaving} onClick={() => setOfferTarget(null)} type="button">Cancelar</button></div></form></section></div>}
-      {historyTarget && <div className="modal-backdrop" role="presentation"><section aria-modal="true" className="modal history-modal" role="dialog"><header className="section-header"><div><h2>Historial de importes</h2><p>{historyTarget.productName} · {historyTarget.variantName}</p></div><button className="secondary compact" onClick={() => setHistoryTarget(null)} type="button">Cerrar</button></header>{historyLoading ? <p className="muted">Cargando historial…</p> : !history.length ? <p className="muted">Todavía no hay cambios registrados.</p> : <div className="table-wrap"><table><thead><tr><th>Fecha</th><th>Tipo</th><th>Valor</th><th>Usuario</th></tr></thead><tbody>{history.map((item) => <tr key={`${item.type}-${item.id}`}><td>{new Intl.DateTimeFormat("es-AR", { dateStyle: "short", timeStyle: "short" }).format(new Date(item.changed_at))}</td><td>{item.type}</td><td>{item.amount_cents === null ? "Importe quitado" : formatPesos(item.amount_cents)}</td><td>{item.changed_by ? "Usuario registrado" : "No disponible"}</td></tr>)}</tbody></table></div>}</section></div>}
+      {followTarget && <div className="modal-backdrop" role="presentation"><section aria-modal="true" className="modal" role="dialog"><header className="section-header"><div><h2>Volver a seguir PVP</h2><p>{followTarget.productName} · {followTarget.variantName}</p></div><button className="secondary compact" disabled={followSaving} onClick={() => setFollowTarget(null)} type="button">Cerrar</button></header><label>Proveedor<select onChange={(event) => setFollowSupplierId(event.target.value)} value={followSupplierId}>{supplierPvpOptions.map((choice) => <option key={choice.supplier_id} value={choice.supplier_id}>{choice.supplier_name} · {formatPesos(choice.pvp_cents)}</option>)}</select></label><p className="muted">Se toma el último PVP aplicado de ese proveedor y el precio base volverá a actualizarse con sus próximas listas.</p><div className="form-actions"><button disabled={followSaving || !followSupplierId} onClick={() => void followSupplierPvp()} type="button">{followSaving ? "Actualizando…" : "Seguir PVP seleccionado"}</button></div></section></div>}
+      {historyTarget && <div className="modal-backdrop" role="presentation"><section aria-modal="true" className="modal history-modal" role="dialog"><header className="section-header"><div><h2>Historial de importes</h2><p>{historyTarget.productName} · {historyTarget.variantName}</p></div><button className="secondary compact" onClick={() => setHistoryTarget(null)} type="button">Cerrar</button></header>{historyLoading ? <p className="muted">Cargando historial…</p> : !history.length ? <p className="muted">Todavía no hay cambios registrados.</p> : <div className="table-wrap"><table><thead><tr><th>Fecha</th><th>Tipo</th><th>Origen</th><th>Valor</th><th>Usuario</th></tr></thead><tbody>{history.map((item) => <tr key={`${item.type}-${item.id}`}><td>{new Intl.DateTimeFormat("es-AR", { dateStyle: "short", timeStyle: "short" }).format(new Date(item.changed_at))}</td><td>{item.type}</td><td>{item.type === "Precio" ? priceSourceLabel(item.price_source ?? null) : "—"}</td><td>{item.amount_cents === null ? "Importe quitado" : formatPesos(item.amount_cents)}</td><td>{item.changed_by ? "Usuario registrado" : "No disponible"}</td></tr>)}</tbody></table></div>}</section></div>}
     </>
   );
 }
