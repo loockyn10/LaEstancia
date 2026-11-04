@@ -1,37 +1,25 @@
 import { createClient } from "@supabase/supabase-js";
 import type { Database } from "@pet-shop/database";
+import { config, configurationError } from "../config/env";
 
-type Client = ReturnType<typeof createClient<Database>>;
+export { loginEmail } from "@pet-shop/domain";
 
-const technicalEmails: Record<string, string> = {
-  "dueño": "dueno@laestancia.local",
-  dueno: "dueno@laestancia.local",
-  admin: "admin@laestancia.local",
-  empleado: "empleado@laestancia.local",
-};
+export type PosSupabaseClient = ReturnType<typeof createClient<Database>>;
 
-let client: Client | undefined;
+let client: PosSupabaseClient | undefined;
 
-export function loginEmail(identifier: string) {
-  return technicalEmails[identifier.trim().toLocaleLowerCase("es-AR")] ?? identifier.trim();
-}
-
-export function configurationError() {
-  return import.meta.env.VITE_SUPABASE_URL?.trim() && import.meta.env.VITE_SUPABASE_ANON_KEY?.trim()
-    ? null
-    : "Falta configurar VITE_SUPABASE_URL y VITE_SUPABASE_ANON_KEY.";
-}
-
-export function supabase() {
-  const url = import.meta.env.VITE_SUPABASE_URL?.trim();
-  const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY?.trim();
-  if (!url || !anonKey) return null;
-  client ??= createClient<Database>(url, anonKey, {
+/** Cliente de Supabase, o null si falta la configuración pública. */
+export function getSupabaseClient(): PosSupabaseClient | null {
+  if (configurationError()) return null;
+  client ??= createClient<Database>(config.supabaseUrl, config.supabaseAnonKey, {
     auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true },
   });
   return client;
 }
 
-export function adminUrl() {
-  return import.meta.env.VITE_ADMIN_URL?.trim() || "http://localhost:5173";
+/** Para operaciones que sólo existen con la pantalla del POS montada (ya con configuración válida). */
+export function db(): PosSupabaseClient {
+  const supabase = getSupabaseClient();
+  if (!supabase) throw new Error(configurationError() ?? "Supabase no está configurado.");
+  return supabase;
 }

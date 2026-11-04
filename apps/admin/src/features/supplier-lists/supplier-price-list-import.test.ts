@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { deduplicateDetectedSupplierProducts, detectSupplierHeader, detectSupplierPdfText, detectSupplierRows, interpretSupplierPdfPages, shouldUseVisualPdfFallback, toDetectedSupplierProducts, visualFallbackPages } from "./supplier-price-list-import";
-import { openAiErrorDetailsFrom, toOpenAiFileData } from "../../../supabase/functions/interpret-supplier-price-list/protocol";
+import { openAiErrorDetailsFrom, toOpenAiFileData } from "../../../../../supabase/functions/interpret-supplier-price-list/protocol";
 
 describe("supplier PDF text interpretation", () => {
   it("detects multiple products, Argentine money, packaging, promo and source page", () => {

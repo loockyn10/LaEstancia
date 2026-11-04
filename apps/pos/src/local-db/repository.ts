@@ -1,4 +1,5 @@
 import { posDatabase, type PosDatabase } from "./database";
+import { findOptionByBarcode, searchOptions } from "./search";
 import type { LocalAccessContext, PosOption } from "./types";
 
 export async function saveAccessContext(context: LocalAccessContext, db: PosDatabase = posDatabase) {
@@ -44,7 +45,9 @@ export async function listSellableOptions(
   const productById = new Map(products.map((item) => [item.id, item]));
   const barcodeByVariant = new Map<string, string[]>();
   for (const barcode of barcodes) {
-    barcodeByVariant.set(barcode.variantId, [...(barcodeByVariant.get(barcode.variantId) ?? []), barcode.code]);
+    const codes = barcodeByVariant.get(barcode.variantId);
+    if (codes) codes.push(barcode.code);
+    else barcodeByVariant.set(barcode.variantId, [barcode.code]);
   }
   const priceByVariant = new Map(prices.map((item) => [item.variantId, item]));
   const offerIds = new Set(offers.map((item) => item.id));
@@ -74,13 +77,8 @@ export async function searchLocalCatalog(
   excludedVariantIds: ReadonlySet<string> = new Set(),
   db: PosDatabase = posDatabase,
 ) {
-  const normalized = query.trim().toLocaleLowerCase("es-AR");
-  if (!normalized) return [];
-  const options = await listSellableOptions(businessId, branchId, db);
-  return options
-    .filter((item) => !excludedVariantIds.has(item.id))
-    .filter((item) => `${item.productName} ${item.variantName} ${item.sku} ${item.barcodes.join(" ")}`.toLocaleLowerCase("es-AR").includes(normalized))
-    .slice(0, 8);
+  if (!query.trim()) return [];
+  return searchOptions(await listSellableOptions(businessId, branchId, db), query, excludedVariantIds);
 }
 
 export async function findLocalBarcode(
@@ -89,8 +87,6 @@ export async function findLocalBarcode(
   code: string,
   db: PosDatabase = posDatabase,
 ) {
-  const barcode = await db.barcodes.get([businessId, code.trim()]);
-  if (!barcode) return null;
-  const options = await listSellableOptions(businessId, branchId, db);
-  return options.find((item) => item.id === barcode.variantId) ?? null;
+  if (!code.trim()) return null;
+  return findOptionByBarcode(await listSellableOptions(businessId, branchId, db), code);
 }

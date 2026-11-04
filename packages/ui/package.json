@@ -3,7 +3,18 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "exports": { ".": "./src/index.ts" },
-  "scripts": { "typecheck": "tsc --noEmit" },
-  "devDependencies": { "typescript": "~5.7.2" }
+  "exports": {
+    ".": "./src/index.ts",
+    "./styles.css": "./src/styles.css"
+  },
+  "scripts": { "typecheck": "tsc --noEmit", "test": "vitest run" },
+  "peerDependencies": { "react": "^18.3.1", "react-dom": "^18.3.1" },
+  "devDependencies": {
+    "@types/react": "^18.3.18",
+    "@types/react-dom": "^18.3.5",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "typescript": "~5.7.2",
+    "vitest": "2.1.9"
+  }
 }

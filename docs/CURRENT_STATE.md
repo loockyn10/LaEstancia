@@ -1,5 +1,17 @@
 # Estado actual
 
+## Sprint de auditoría y reorganización (Claude Code, 2026-11-04)
+
+Sin funcionalidades comerciales nuevas: se reorganizó y endureció lo existente.
+
+- **Admin**: el `App.tsx` de ~2.200 líneas se dividió por dominios (ver `ARCHITECTURE.md`). Rutas y menú salen de una tabla única, el catálogo se carga una vez y de forma paginada, las pantallas pesadas son lazy (bundle inicial 476 KB → 288 KB; 137 → 87 KB gzip). Tras guardar un producto se vuelve al listado de Productos (antes iba al Dashboard) y la importación recarga el catálogo al terminar.
+- **POS**: `App.tsx` se dividió en auth / connectivity / catalog / cart / sales / cash / app. Se reemplazaron los `window.prompt` de caja por diálogos, la búsqueda ya no relee IndexedDB en cada tecla, y tras cobrar sólo se refresca el stock (antes se descargaba todo el catálogo).
+- **Datos**: lecturas paginadas con `fetchAllRows` en Admin y en la sincronización del POS (antes truncaban en 1.000 filas).
+- **UX/UI**: design system compartido (`packages/ui`), identidad unificada navy/dorado también en el POS (manifest, icono y `theme-color` incluidos), selects/fechas/menús/diálogos propios y accesibles, estados de carga/vacío/error uniformes, acciones de fila agrupadas en un menú, `ErrorBoundary` en ambas apps.
+- **Tipos**: se eliminaron los casts `as unknown as` de RPCs ya presentes en `generated.ts` (precios, PVP de proveedor, listas de proveedor) y los tipos duplicados de cada pantalla.
+- **Seguridad**: migration `20261104000000_restrict_inventory_history_to_managers.sql` (ver `ARCHITECTURE.md`). No se aplicó ni se hizo `db push`; el `dry-run` no se pudo completar porque la cuenta de Supabase CLI recibió 403 al inicializar el login role.
+- **Validación local**: `pnpm test` (domain 13, database 4, ui 7, admin 48, POS 24), `pnpm check` y `git diff --check` en verde. La UI nueva se verificó en un navegador real (Select con búsqueda y teclado, calendario, diálogo con foco/Escape, menú de acciones, login de ambas apps); las pantallas autenticadas **no** se recorrieron contra Supabase en este sprint.
+
 ## POS local-first implementado localmente
 
 - `apps/pos` incorpora Dexie y una base IndexedDB versionada para contexto de acceso, sucursales, productos, presentaciones, barcodes, precios, ofertas vigentes, stock por sucursal y metadata de sincronización.

@@ -38,6 +38,17 @@ export class PosDatabase extends Dexie {
     });
   }
 
+  /** Reemplaza sólo el último stock conocido del business (sin tocar catálogo, precios ni metadata). */
+  async replaceStocks(businessId: string, stocks: LocalStock[]) {
+    if (stocks.some((row) => row.businessId !== businessId)) {
+      throw new Error("The local POS snapshot contains rows from another business.");
+    }
+    await this.transaction("rw", this.stocks, async () => {
+      await this.stocks.where("businessId").equals(businessId).delete();
+      await this.stocks.bulkPut(stocks);
+    });
+  }
+
   async replaceOperationalSnapshot(snapshot: OperationalSnapshot, lastSyncAt: string) {
     const scopedRows = [
       ...snapshot.branches,

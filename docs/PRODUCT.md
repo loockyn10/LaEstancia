@@ -26,10 +26,10 @@ Stock y precios serán capacidades centrales. La UX debe priorizar simplicidad p
 
 ## UX administrativa del catálogo
 
-- La navegación inicial del backoffice se limita a Productos, Marcas y Categorías.
+- La navegación de Administración incluye Dashboard, Productos, Precios, Stock, Proveedores, Listas de proveedores, Compras, Ventas, Caja, Etiquetas, Marcas, Categorías e Importar.
 - La operación usa el término “Presentación” para `ProductVariant`. Un producto simple se crea con una presentación predeterminada.
 - La búsqueda de productos cubre nombre del producto, SKU de la presentación y código de barras. Marcas y categorías se administran como listas planas activables.
-- `staff` consulta el catálogo; `owner` y `admin` pueden crear y editar. Esta distinción mejora la UX, pero RLS permanece como autoridad de acceso.
+- Sólo `owner` y `admin` usan Administración y pueden crear y editar; `staff` consulta precio y stock desde el POS. Esta distinción mejora la UX, pero RLS permanece como autoridad de acceso.
 - La sección Precios permite editar importes por presentación, revisar el historial de precio y costo para owner/admin, y ajustar en forma masiva sólo precios de venta mediante un porcentaje con vista previa y confirmación.
 - Una presentación puede tener ofertas simples de precio promocional, independientes del precio base. Una oferta sólo aplica si está activa y dentro de su vigencia; no se contemplan aún 2x1, combos ni descuentos por cantidad.
 - La sección Etiquetas permite seleccionar presentaciones y cantidades de copias para imprimir etiquetas chicas, etiquetas de góndola y carteles de oferta desde la vista previa del navegador. Usa el barcode principal existente cuando está disponible, sin inventar códigos.
@@ -92,5 +92,5 @@ Stock y precios serán capacidades centrales. La UX debe priorizar simplicidad p
 ## Decisiones pendientes
 
 - Fraccionamiento.
-- Alcance y diseño del POS.
+- Alcance del POS offline transaccional (ventas locales, outbox, reconciliación).
 - Alcance y framework del ecommerce público.

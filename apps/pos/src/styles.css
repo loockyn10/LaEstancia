@@ -1,2 +1,55 @@
-:root{font-family:Inter,system-ui,sans-serif;color:#14241f;background:#f4f3ed}*{box-sizing:border-box}body{margin:0}button,input,select{font:inherit}button{cursor:pointer;border:0;border-radius:9px;background:#146c55;color:white;padding:.7rem 1rem;font-weight:700}button:disabled{cursor:not-allowed;opacity:.55}.pos{max-width:1280px;margin:auto;padding:1rem}header{display:flex;align-items:center;justify-content:space-between;gap:1rem;padding:1rem 0}.eyebrow{letter-spacing:.12em;font-size:.75rem;font-weight:800;color:#82774f;margin:0 0 .25rem}.operator,.status{display:flex;align-items:center;gap:.7rem;flex-wrap:wrap;font-size:.9rem}.operator a{color:#146c55;font-weight:700}.link{background:transparent;color:#146c55;padding:.2rem}.status{border-block:1px solid #d7d7ce;padding:.65rem 0}.online{color:#087443;font-weight:800}.offline{color:#ae331a;font-weight:800}.workspace{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(330px,1fr);gap:1rem;margin-top:1rem}.catalog,.cart,.operations article,.auth section{background:white;border:1px solid #d9d9d1;border-radius:14px;padding:1rem;box-shadow:0 4px 20px #1a241410}label{display:grid;gap:.35rem;font-weight:700;margin-bottom:1rem}input,select{border:1px solid #b6beb7;border-radius:8px;padding:.7rem;background:white;width:100%}.results button{width:100%;display:flex;justify-content:space-between;text-align:left;background:#f1f5f1;color:#18372e;border:1px solid #dce5dd;margin-top:.45rem}.results small,.cart small{display:block;font-weight:400;margin-top:.18rem}.cart article{display:grid;grid-template-columns:1fr 5rem auto auto;align-items:center;gap:.5rem;border-bottom:1px solid #e5e5de;padding:.65rem 0}.cart article input{width:5rem}.danger{color:#b12416}.total{display:flex;justify-content:space-between;font-size:1.35rem;padding:1rem 0}.charge{background:#c26424;width:100%;font-size:1.15rem}.operations{display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-top:1rem}.operations h2{margin-top:0}.operations ul{padding-left:1.2rem}.secondary{background:#55645d}.error{color:#a32416;font-weight:700}.offline-note{font-size:.85rem;color:#5c655e}.auth{min-height:100vh;display:grid;place-items:center;padding:1rem}.auth section{width:min(100%,440px)}.auth form{display:grid;gap:.5rem}.auth button{margin-top:.5rem}@media(max-width:760px){.workspace,.operations{grid-template-columns:1fr}.pos{padding:.7rem}header{align-items:flex-start;flex-direction:column}.cart article{grid-template-columns:1fr 4.5rem auto}.cart article .link{grid-column:1/-1;justify-self:start}}
-.empty-local{margin-top:1rem;border:1px solid #d3b36d;border-radius:12px;background:#fff8e8;padding:1rem}.empty-local h1{font-size:1.05rem;margin:0 0 .35rem}.empty-local p{margin:0}.offline-message{color:#924013}
+/* Estilos propios del POS. Tokens, botones, campos, selects y diálogos vienen de @pet-shop/ui. */
+
+body { background: var(--color-bg); }
+
+.pos { max-width: 1280px; margin: 0 auto; padding: 1rem; }
+.pos > * + * { margin-top: 1rem; }
+
+.pos-header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: .85rem 1.1rem; border-radius: var(--radius-lg); background: var(--color-navy); color: var(--color-navy-ink); }
+.pos-header .eyebrow { margin: 0 0 .2rem; color: #f2c52e; }
+.pos-header strong { font-size: 1.05rem; }
+.operator { display: flex; align-items: center; flex-wrap: wrap; gap: .75rem; font-size: .9rem; }
+.operator a { color: #f2c52e; font-weight: 700; }
+.pos-header button.link-button { color: #e2eded; }
+.pos-header button.link-button:hover:not(:disabled) { color: #fff; }
+
+.status { display: flex; align-items: center; flex-wrap: wrap; gap: .75rem 1rem; padding: .6rem 0; color: var(--color-muted); font-size: .9rem; border-bottom: 1px solid var(--color-border); }
+
+.workspace { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(20rem, 1fr); gap: 1rem; align-items: start; }
+.panel { padding: 1.1rem; border: 1px solid var(--color-border); border-radius: var(--radius-lg); background: var(--color-surface); box-shadow: var(--shadow-card); }
+.panel > * + * { margin-top: 1rem; }
+.panel h1, .panel h2 { margin-top: 0; }
+.operations { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+.operations ul { margin: 0; padding-left: 1.2rem; }
+.operations li + li { margin-top: .35rem; }
+
+.results { display: grid; gap: .45rem; }
+.results button { display: flex; justify-content: space-between; gap: 1rem; width: 100%; min-height: 3.25rem; padding: .7rem .9rem; border: 1px solid var(--color-border); background: var(--color-surface-alt); color: var(--color-ink); font-weight: 600; text-align: left; }
+.results button:hover:not(:disabled) { border-color: var(--color-gold-border); background: #fbf3d2; }
+.results small, .cart small { display: block; margin-top: .15rem; font-weight: 400; }
+.results strong { text-align: right; }
+
+.cart-lines article { display: grid; grid-template-columns: 1fr 5rem auto auto; align-items: center; gap: .5rem; padding: .65rem 0; border-bottom: 1px solid #edf0f0; }
+.cart-lines article input { text-align: right; }
+.total { display: flex; align-items: baseline; justify-content: space-between; padding-top: .5rem; font-size: 1.4rem; }
+.charge { width: 100%; min-height: 3.5rem; font-size: 1.15rem; letter-spacing: .02em; }
+.cash-expected { padding: .75rem 1rem; border-radius: var(--radius-sm); background: #edf6f5; }
+
+.error { color: var(--color-danger); font-weight: 600; }
+.offline-note { color: var(--color-muted); font-size: .85rem; }
+.offline-message { color: var(--color-warning); }
+.empty-local { padding: 1rem 1.25rem; border: 1px solid #e6cf85; border-radius: var(--radius-md); background: #fff8e0; }
+.empty-local h1 { margin: 0 0 .35rem; font-size: 1.05rem; }
+
+.auth { display: grid; min-height: 100vh; place-items: center; padding: 1rem; }
+.auth section { width: min(100%, 27.5rem); padding: 1.75rem; border: 1px solid var(--color-border); border-radius: var(--radius-lg); background: var(--color-surface); box-shadow: var(--shadow-card); }
+.auth section > * + * { margin-top: .9rem; }
+.auth form { display: grid; gap: 1rem; margin-top: 1.25rem; }
+
+@media (max-width: 47.5rem) {
+  .workspace, .operations { grid-template-columns: 1fr; }
+  .pos { padding: .7rem; }
+  .pos-header { flex-direction: column; align-items: flex-start; }
+  .cart-lines article { grid-template-columns: 1fr 4.5rem auto; }
+  .cart-lines article button { grid-column: 1 / -1; justify-self: start; }
+}

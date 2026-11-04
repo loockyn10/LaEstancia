@@ -1,6 +1,6 @@
 import Papa from "papaparse";
 import readXlsxFile from "read-excel-file/browser";
-import { parseMoneyCents } from "./catalog-import";
+import { parseMoneyCents } from "../imports/catalog-import";
 
 export type DetectedPurchaseOption = {
   supplier_code: string | null;

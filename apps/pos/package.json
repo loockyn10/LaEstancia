@@ -12,6 +12,8 @@
   },
   "dependencies": {
     "@pet-shop/database": "workspace:^",
+    "@pet-shop/domain": "workspace:^",
+    "@pet-shop/ui": "workspace:^",
     "@supabase/supabase-js": "2.49.1",
     "@vitejs/plugin-react": "^4.3.4",
     "dexie": "^4.4.6",

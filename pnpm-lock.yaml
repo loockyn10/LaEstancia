@@ -17,6 +17,12 @@ importers:
       '@pet-shop/database':
         specifier: workspace:^
         version: link:../../packages/database
+      '@pet-shop/domain':
+        specifier: workspace:^
+        version: link:../../packages/domain
+      '@pet-shop/ui':
+        specifier: workspace:^
+        version: link:../../packages/ui
       '@supabase/supabase-js':
         specifier: 2.49.1
         version: 2.49.1
@@ -81,6 +87,12 @@ importers:
       '@pet-shop/database':
         specifier: workspace:^
         version: link:../../packages/database
+      '@pet-shop/domain':
+        specifier: workspace:^
+        version: link:../../packages/domain
+      '@pet-shop/ui':
+        specifier: workspace:^
+        version: link:../../packages/ui
       '@supabase/supabase-js':
         specifier: 2.49.1
         version: 2.49.1
@@ -142,18 +154,39 @@ importers:
       typescript:
         specifier: ~5.7.2
         version: 5.7.3
+      vitest:
+        specifier: 2.1.9
+        version: 2.1.9(@types/node@26.6.4)(terser@5.51.2)
 
   packages/domain:
     devDependencies:
       typescript:
         specifier: ~5.7.2
         version: 5.7.3
+      vitest:
+        specifier: 2.1.9
+        version: 2.1.9(@types/node@26.6.4)(terser@5.51.2)
 
   packages/ui:
     devDependencies:
+      '@types/react':
+        specifier: ^18.3.18
+        version: 18.3.31
+      '@types/react-dom':
+        specifier: ^18.3.5
+        version: 18.3.7(@types/react@18.3.31)
+      react:
+        specifier: ^18.3.1
+        version: 18.3.1
+      react-dom:
+        specifier: ^18.3.1
+        version: 18.3.1(react@18.3.1)
       typescript:
         specifier: ~5.7.2
         version: 5.7.3
+      vitest:
+        specifier: 2.1.9
+        version: 2.1.9(@types/node@26.6.4)(terser@5.51.2)
 
 packages:
 

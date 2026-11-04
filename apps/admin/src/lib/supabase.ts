@@ -1,42 +1,26 @@
-import { createClient } from '@supabase/supabase-js'
-import type { Database } from '@pet-shop/database'
+import { createClient } from "@supabase/supabase-js";
+import type { Database } from "@pet-shop/database";
+import { config, configurationError } from "../config/env";
 
-type SupabaseConfiguration = {
-  url: string
-  anonKey: string
+export type AppSupabaseClient = ReturnType<typeof createClient<Database>>;
+
+let client: AppSupabaseClient | undefined;
+
+/** Cliente de Supabase, o null si la configuración pública falta (sólo lo consulta el gate de arranque). */
+export function getSupabaseClient(): AppSupabaseClient | null {
+  if (configurationError()) return null;
+  client ??= createClient<Database>(config.supabaseUrl, config.supabaseAnonKey, {
+    auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true },
+  });
+  return client;
 }
 
-type SupabaseClient = ReturnType<typeof createClient<Database>>
-
-let client: SupabaseClient | undefined
-
-function getConfiguration(): SupabaseConfiguration | null {
-  const url = import.meta.env.VITE_SUPABASE_URL?.trim()
-  const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY?.trim()
-
-  return url && anonKey ? { url, anonKey } : null
-}
-
-export function getSupabaseConfigurationError(): string | null {
-  return getConfiguration()
-    ? null
-    : 'Falta configurar VITE_SUPABASE_URL y VITE_SUPABASE_ANON_KEY. Copiá .env.example a .env.local y completá los valores públicos del proyecto.'
-}
-
-export function getSupabaseClient(): SupabaseClient | null {
-  const configuration = getConfiguration()
-
-  if (!configuration) {
-    return null
-  }
-
-  client ??= createClient<Database>(configuration.url, configuration.anonKey, {
-    auth: {
-      persistSession: true,
-      autoRefreshToken: true,
-      detectSessionInUrl: true,
-    },
-  })
-
-  return client
+/**
+ * Cliente para la capa de acceso a datos. La app no renderiza ninguna pantalla autenticada sin
+ * configuración válida, así que acá una falta es un error de programación y no un caso de UI.
+ */
+export function db(): AppSupabaseClient {
+  const supabase = getSupabaseClient();
+  if (!supabase) throw new Error(configurationError() ?? "Supabase no está configurado.");
+  return supabase;
 }

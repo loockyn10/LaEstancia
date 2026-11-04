@@ -1,5 +1,16 @@
 # Tareas, riesgos y verificaciones
 
+## Pendientes del sprint de reorganización
+
+- **Aplicar** `20261104000000_restrict_inventory_history_to_managers.sql`: `pnpm dlx supabase db push --linked --dry-run` falló con 403 ("account does not have the necessary privileges") al inicializar el login role; reintentar con una cuenta/token con privilegios y revisar que el dry-run muestre sólo esa migration. Después correr una matriz E2E que confirme que staff recibe `not authorized` y owner/admin siguen leyendo el historial (no se escribió ni ejecutó SQL remoto en este sprint).
+- **Compras**: guardar un borrador reemplaza sus ítems con `delete` + `insert` desde el navegador (no atómico). Conviene una RPC transaccional (por ejemplo `save_purchase_draft`) para no dejar un borrador sin ítems si falla el insert.
+- **Dinero**: `parseMoneyCents` (importadores, tolerante a formatos de planilla) y `parsePesos` (formularios, estricto) coexisten con reglas parcialmente solapadas. Unificar con tests antes de tocar los importadores.
+- **Tests de interfaz**: no hay tests de DOM para `Select`, `Dialog`, `DateField` ni para las pantallas (sólo lógica pura y datos). Evaluar Testing Library + jsdom si se quiere proteger regresiones de UI.
+- **Listas de proveedores**: la pantalla y su flujo se separaron en api/hook/componentes sin cambiar su lógica; sigue siendo la más extensa (hook de ~350 líneas). Candidata a dividirse por paso (importar / interpretar / matching).
+- **Cobertura de pantallas autenticadas**: no se recorrieron contra Supabase real durante este sprint; hacer un smoke test manual de Admin (cada ruta del menú) y POS (venta online, caja, offline) antes de desplegar.
+- **Offline POS**: sigue pendiente el sprint transaccional (outbox, ventas locales, reconciliación). Este sprint sólo dejó la estructura (`sync/`, `catalog/`, `cart/`, `sales/`, `cash/`) lista para incorporarlo.
+- Los tipos de `generated.ts` declaran `target_amount_cents: number` en `set_variant_base_price` aunque la RPC acepta `null` para quitar el precio; `pricing-api.ts` lo castea. Revisar al regenerar tipos.
+
 ## Pendientes reales
 
 - Ejecutar de forma controlada `scripts/seed-initial-users.mjs` con `SUPABASE_SERVICE_ROLE_KEY` fuera del repositorio, después de confirmar que la política Auth admite las contraseñas transitorias de cuatro dígitos. Deben cambiarse antes de una operación real.

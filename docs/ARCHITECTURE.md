@@ -51,7 +51,7 @@ Los comandos efectivamente verificados se registran en `CURRENT_STATE.md`.
 - Se agrega el movimiento `purchase` como entrada auditable. El cliente no tiene escritura directa sobre balances o movimientos; tampoco puede confirmar una compra por updates independientes.
 - RLS habilita lectura de proveedores y encabezados de compras para staff, sin exponer los ítems ni costos. Owner/admin crean y modifican únicamente borradores; compras confirmadas o canceladas no pueden volver a editarse mediante las políticas ni desde el frontend.
 
-## Listas de proveedores (pendiente de aplicación remota)
+## Listas de proveedores aplicadas y verificadas remotamente
 
 - La migration `20261008000000_supplier_price_lists.sql` versiona listas privadas, vínculos persistentes por código de proveedor, ítems detectados y opciones de compra. El costo efectivo es una columna generada y las RPCs de staging/aplicación validan rol y ownership dentro de una transacción.
 - La aplicación no actualiza stock. Al confirmar una lista, el costo seleccionado se escribe mediante `variant_costs`; si un ítem trae PVP, una presentación nueva recibe un precio inicial con origen `supplier_pvp`, y una existente se actualiza únicamente cuando ya sigue a ese mismo proveedor. `variant_prices` conserva `price_source` y `supplier_id`; la escritura manual pasa a `manual`. Ambos cambios usan los triggers oficiales de historial.
@@ -86,7 +86,7 @@ Los comandos efectivamente verificados se registran en `CURRENT_STATE.md`.
 - El margen usa `sale_items.line_total_cents` y el último `variant_cost_history` con `changed_at <= sales.created_at`. Por eso se etiqueta como histórico estimado: no hay un snapshot de costo por línea ni asignación FIFO/promedio.
 - La corrección versionada `20261007010100_dashboard_payment_methods_fix.sql` califica el agregado `totals.total_cents` dentro de la RPC, sin cambiar su contrato ni otras funciones.
 
-La configuración de navegador usa únicamente `VITE_SUPABASE_URL` y `VITE_SUPABASE_ANON_KEY`, cargadas desde el `.env.local` raíz mediante Vite. Nunca se usa `service_role` en el frontend. No se contemplan Tauri, SQLite ni Docker.
+La configuración de navegador usa `VITE_SUPABASE_URL` y `VITE_SUPABASE_ANON_KEY` (obligatorias) y `VITE_ADMIN_URL` / `VITE_POS_URL` (enlaces entre superficies; obligatorias en producción), cargadas desde el `.env.local` raíz mediante Vite y leídas sólo en `config/env.ts` de cada app. Nunca se usa `service_role` en el frontend. No se contemplan Tauri, SQLite ni Docker.
 
 ## Admin y POS separados
 
@@ -104,3 +104,46 @@ La configuración de navegador usa únicamente `VITE_SUPABASE_URL` y `VITE_SUPAB
 - El service worker de Vite PWA precachea solamente el app shell y assets locales. No existe runtime cache para respuestas de Supabase; los datos operativos viven en IndexedDB.
 - Una sesión Supabase persistida y no vencida, junto con un contexto y snapshot locales previos, permite abrir, buscar, escanear y armar el carrito sin red. Un inicio de sesión nuevo, confirmar ventas, operar caja e historial reciente siguen requiriendo conexión.
 - La arquitectura deja el límite `sync` separado para incorporar después ventas locales/outbox y reconciliación, pero este sprint no crea esas tablas ni confirma ventas offline.
+
+## Estructura del código
+
+Capas, sin ceremonia: **UI → hook / lógica pura → acceso a datos → Supabase o IndexedDB**. Reglas que todo cambio debe respetar:
+
+1. Ningún componente llama a `supabase.from(...)`, `.rpc(...)` ni a IndexedDB. Admin accede a datos sólo desde `features/*/*-api.ts` y POS sólo desde `*-api.ts`, `sync/` y `local-db/`.
+2. Las funciones `*-api.ts` lanzan el error crudo de Supabase; la UI lo traduce con `describeError` (envoltorio de `describeBackendError` de `@pet-shop/domain`). En producción el mensaje es siempre humano; en desarrollo agrega código/detalle técnico y registra en consola.
+3. Toda lectura "completa" de una tabla pasa por `fetchAllRows` (`@pet-shop/database`): PostgREST corta cada respuesta en `max_rows = 1000` y un catálogo mayor quedaba truncado en silencio (Admin y sincronización del POS).
+4. La lógica comercial sigue en PostgreSQL (RPCs `SECURITY DEFINER`, RLS, triggers). El frontend sólo previsualiza con la misma fórmula (por ejemplo, subtotal de línea redondeado al centavo) y nunca envía precios.
+5. `import.meta.env` se lee únicamente en `config/env.ts` de cada app. Sin `VITE_POS_URL` / `VITE_ADMIN_URL` en producción el enlace se oculta; ya no apunta a `localhost`.
+
+### Paquetes compartidos
+
+- `packages/domain` — funciones puras sin dependencias: dinero en centavos (`formatPesos`, `parsePesos`, `lineTotalCents`), cantidades de tres decimales, fechas calendario, medios de pago, roles (`isManager`), identificadores de login simples y `describeBackendError`. Tests propios.
+- `packages/database` — tipos generados (`generated.ts`, no se edita a mano) y `fetchAllRows`. Tests propios.
+- `packages/ui` — design system compartido por Admin y POS (ver abajo). Estilos en `@pet-shop/ui/styles.css`; cada app sólo agrega CSS de sus pantallas.
+
+### Admin (`apps/admin/src`)
+
+- `App.tsx` es sólo la puerta de entrada (sesión → acceso → login / sin acceso / POS para staff / Administración). `app/` contiene `AppShell`, `Sidebar` y `routes.tsx`, la **tabla única de rutas y navegación** (el menú se deriva de ella). Las pantallas pesadas se cargan con `React.lazy`.
+- `auth/`: `useAccess` (Auth + membresía + negocio), `accessForMembership` (`staff` nunca queda `authorized`; se redirige al POS) y pantallas de login/estado.
+- `config/env.ts`, `lib/` (`supabase.ts` con `db()`, `errors.ts`, `router.ts` basado en History API, `useQuery`, `usePagedList`).
+- `features/<dominio>/`: `catalog`, `pricing`, `stock`, `labels`, `dashboard`, `sales`, `cash`, `purchasing`, `supplier-lists`, `imports`. Cada una separa `*-api.ts` (datos), `*-model.ts` (lógica pura con tests) y las páginas/diálogos. `catalog` además expone `CatalogProvider`/`useCatalog`: **una sola carga paginada** del catálogo (productos, presentaciones, barcodes, marcas, categorías, sucursales) compartida por todas las pantallas.
+- Administración es una superficie sólo para owner/admin (D020); por eso las pantallas ya no tienen ramas "modo staff". RLS/RPC siguen siendo la autoridad.
+
+### POS (`apps/pos/src`)
+
+Flujo intacto: Supabase → `sync/` → IndexedDB (`local-db/`) → UI.
+
+- `config/`, `lib/` (cliente, errores), `connectivity/` (`useOnlineStatus`), `auth/` (`usePosAccess`, pantallas).
+- `local-db/`: esquema Dexie `v1` sin cambios, `repository.ts` (lecturas locales con `businessId` explícito) y `search.ts` (búsqueda y barcode puros, sin tildes).
+- `sync/catalog-sync.ts`: descarga **paginada** del snapshot operativo y `synchronizeStock` (refresco sólo del stock tras cobrar; no cambia la marca de última sincronización).
+- `catalog/usePosCatalog`: sincronización, sucursal y opciones vendibles leídas de IndexedDB una vez por cambio de sucursal/sincronización; la búsqueda por tecla es en memoria.
+- `cart/` (modelo puro del carrito, tests), `sales/`, `cash/` (RPCs; requieren conexión) y `app/` (`PosScreen`, `PosHeader`).
+- Si la consulta de membresía falla por la red, el POS continúa con el último contexto conocido en lugar de mostrar "sin acceso"; una membresía revocada sigue perdiendo el acceso cuando el servidor responde.
+
+### Design system (`packages/ui`)
+
+Un único conjunto de componentes sin dependencias externas: `Button`, `Select` (combobox/listbox accesible, con búsqueda desde 9 opciones), `DateField`/`DateTimeField`/`TimeField` (calendario propio), `Dialog` y `useConfirm` (reemplazo de `window.confirm`), `ActionMenu`, `Popover` (portal con posición fija, se invierte si no hay espacio), `Badge`, `Notice`, `Field`, `Card`, `PageHeader`, `LoadingState`/`EmptyState`/`ErrorState`, `Spinner` y `ErrorBoundary`. Ya no se usan `<select>` ni `<input type="date|datetime-local">` nativos ni `window.prompt/confirm`. Tokens (colores navy/petróleo + dorado, radios, sombras, altura de control) en `styles.css`.
+
+### Seguridad: hallazgo corregido
+
+`list_inventory_movements` era `SECURITY DEFINER` y sólo exigía membresía activa, por lo que saltaba la policy owner/admin de `inventory_movements` y permitía a staff leer el historial completo (incluidos movimientos de compra, notas y autores). La migration `20261104000000_restrict_inventory_history_to_managers.sql` la restringe a owner/admin sin cambiar firma ni grants. Está versionada y **pendiente de aplicación remota** (ver `TASKS.md`).

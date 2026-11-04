@@ -167,3 +167,41 @@
 **Motivo:** el volumen actual permite una sincronización completa simple, auditable y reemplazable sin introducir prematuramente delta-sync, mientras una única ruta de lectura evita comportamientos distintos online/offline.
 
 **Consecuencias:** las filas locales quedan scopeadas por `businessId` y, para stock, `branchId`; el contexto se asocia al usuario autenticado. Sólo se guardan datos necesarios para cobrar y nunca costos, márgenes, proveedores ni compras. La sesión Supabase persistida debe seguir vigente para arrancar offline. Ventas, caja, outbox, conflictos y reconciliación permanecen online o pendientes para el siguiente sprint.
+
+## D022 — Admin organizado por features con acceso a datos aislado
+
+**Decisión:** `apps/admin/src/features/<dominio>/` separa `*-api.ts` (única capa con `supabase.from/rpc`), `*-model.ts` (lógica pura testeable) y las páginas. Rutas y navegación salen de una tabla (`app/routes.tsx`); el catálogo se carga una vez en `CatalogProvider`.
+
+**Motivo:** el `App.tsx` monolítico mezclaba routing, auth, layout, datos y lógica comercial; era difícil de probar y de continuar con agentes.
+
+**Consecuencias:** sin patrones de capas adicionales (sin factories, DI ni interfaces de una sola implementación). Un componente nuevo no debe llamar a Supabase directamente.
+
+## D023 — Lecturas completas siempre paginadas
+
+**Decisión:** toda lectura de "todas las filas" usa `fetchAllRows` con orden estable. Aplica a Admin y a la descarga del snapshot del POS.
+
+**Motivo:** PostgREST limita cada respuesta a `max_rows = 1000`; un negocio con más presentaciones veía un catálogo y un POS truncados sin error.
+
+**Consecuencias:** cada tabla requiere un `order` único (por ejemplo `id` o `variant_id`). Una consulta nueva sobre catálogo, precios o stock no debe llamar `.select()` sin paginar.
+
+## D024 — Design system propio y único en `packages/ui`
+
+**Decisión:** Admin y POS comparten `@pet-shop/ui` (Select/Combobox, fechas, Dialog, ActionMenu, Popover, feedback, tokens). No se agregan librerías de UI: los controles se implementan sin dependencias y se prueban en su lógica pura.
+
+**Motivo:** los controles nativos (`select`, `date`, `datetime-local`, `confirm`, `prompt`) se ven distinto según navegador y sistema operativo y rompían la identidad.
+
+**Consecuencias:** no se usan controles nativos de selección/fecha en pantallas nuevas. Los componentes interactivos (`Select`, `Dialog`, `DateField`) no tienen tests de DOM todavía; su lógica de teclado/calendario sí está probada y se verificó manualmente en navegador.
+
+## D025 — Errores: humanos en producción, diagnósticos en desarrollo
+
+**Decisión:** `describeBackendError` (dominio) traduce errores conocidos de PostgreSQL/RPC; cada app lo envuelve en `describeError`, que en desarrollo agrega el detalle técnico y lo registra. Un `ErrorBoundary` evita pantallas en blanco.
+
+**Consecuencias:** las funciones de acceso a datos lanzan el error crudo; la UI nunca muestra `error.message` de la base en producción.
+
+## D026 — Historial de movimientos de inventario sólo para owner/admin
+
+**Decisión:** `list_inventory_movements` exige rol owner/admin (antes cualquier membresía activa).
+
+**Motivo:** la RPC `SECURITY DEFINER` esquivaba la policy owner/admin de `inventory_movements` y exponía a staff movimientos de compra, notas y autores.
+
+**Consecuencias:** staff sigue viendo sólo stock actual. La migration está versionada y pendiente de aplicación remota.
