@@ -9,6 +9,7 @@
 - **Listas de proveedores**: la pantalla y su flujo se separaron en api/hook/componentes sin cambiar su lógica; sigue siendo la más extensa (hook de ~350 líneas). Candidata a dividirse por paso (importar / interpretar / matching).
 - **Cobertura de pantallas autenticadas**: no se recorrieron contra Supabase real durante este sprint; hacer un smoke test manual de Admin (cada ruta del menú) y POS (venta online, caja, offline) antes de desplegar.
 - **Offline POS**: sigue pendiente el sprint transaccional (outbox, ventas locales, reconciliación). Este sprint sólo dejó la estructura (`sync/`, `catalog/`, `cart/`, `sales/`, `cash/`) lista para incorporarlo.
+- **Revisión del refactor (2026-11-04)**, deuda preexistente sin corregir: (a) una membresía revocada no borra el contexto local del POS, así que offline sigue abriendo hasta que venza el JWT persistido; (b) las RPC `list_sales` / `list_inventory_movements` también quedan sujetas a `max_rows = 1000` (muestran las más recientes); (c) aplicar una lista de proveedor que crea productos no recarga `CatalogProvider` hasta recargar la página.
 - Los tipos de `generated.ts` declaran `target_amount_cents: number` en `set_variant_base_price` aunque la RPC acepta `null` para quitar el precio; `pricing-api.ts` lo castea. Revisar al regenerar tipos.
 
 ## Pendientes reales

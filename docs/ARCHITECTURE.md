@@ -138,7 +138,7 @@ Flujo intacto: Supabase → `sync/` → IndexedDB (`local-db/`) → UI.
 - `sync/catalog-sync.ts`: descarga **paginada** del snapshot operativo y `synchronizeStock` (refresco sólo del stock tras cobrar; no cambia la marca de última sincronización).
 - `catalog/usePosCatalog`: sincronización, sucursal y opciones vendibles leídas de IndexedDB una vez por cambio de sucursal/sincronización; la búsqueda por tecla es en memoria.
 - `cart/` (modelo puro del carrito, tests), `sales/`, `cash/` (RPCs; requieren conexión) y `app/` (`PosScreen`, `PosHeader`).
-- Si la consulta de membresía falla por la red, el POS continúa con el último contexto conocido en lugar de mostrar "sin acceso"; una membresía revocada sigue perdiendo el acceso cuando el servidor responde.
+- Si la consulta de membresía falla por la red (sin respuesta del servidor, `status 0`, o navegador sin conexión), el POS continúa con el último contexto conocido en lugar de mostrar "sin acceso". Cualquier error devuelto por el servidor (401/403/5xx) se trata como "sin acceso", nunca como autorización (`auth/access-fallback.ts`), y una membresía revocada pierde el acceso cuando el servidor responde.
 
 ### Design system (`packages/ui`)
 

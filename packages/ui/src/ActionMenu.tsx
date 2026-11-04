@@ -21,13 +21,14 @@ export function ActionMenu({ items, label = "Acciones" }: { items: readonly Acti
     if (restoreFocus) trigger.current?.focus();
   }
 
-  function run(item: ActionMenuItem) {
-    if (item.disabled) return;
+  function run(item: ActionMenuItem | undefined) {
+    if (!item || item.disabled) return;
     close();
     item.onSelect();
   }
 
   function move(step: 1 | -1) {
+    if (!enabled.length) return;
     const position = enabled.indexOf(active);
     setActive(enabled[(position + step + enabled.length) % enabled.length]);
   }

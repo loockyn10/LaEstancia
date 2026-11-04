@@ -71,7 +71,8 @@ export async function savePurchase(args: { businessId: string; purchaseId?: stri
 
   let purchaseId = args.purchaseId;
   if (purchaseId) {
-    const { error } = await supabase.from("purchases").update(payload).eq("id", purchaseId).eq("business_id", businessId);
+    // `.single()` falla si RLS no dejó actualizar (por ejemplo, la compra ya no es borrador): no se tocan los ítems.
+    const { error } = await supabase.from("purchases").update(payload).eq("id", purchaseId).eq("business_id", businessId).select("id").single();
     if (error) throw error;
   } else {
     const { data: auth } = await supabase.auth.getUser();

@@ -3,6 +3,7 @@ import { configurationError } from "../config/env";
 import { getSupabaseClient } from "../lib/supabase";
 import { getCachedAccessContext, saveAccessContext } from "../local-db/repository";
 import type { LocalAccessContext } from "../local-db/types";
+import { contextAfterFailedCheck } from "./access-fallback";
 
 export type PosAccess =
   | { status: "configuration-error"; message: string }
@@ -18,7 +19,8 @@ type SessionLike = { user: { id: string }; expires_at?: number } | null;
 /**
  * Sesión de Supabase → membresía → negocio, con contexto local para arrancar sin red.
  * Online la membresía se revalida siempre (una membresía revocada pierde el acceso); si la consulta
- * falla por la red se sigue con el último contexto conocido en lugar de mostrar "sin acceso".
+ * falla por la red se sigue con el último contexto conocido en lugar de mostrar "sin acceso". Un error
+ * devuelto por el servidor no habilita el contexto local (ver `contextAfterFailedCheck`).
  */
 export function usePosAccess(online: boolean) {
   const configError = configurationError();
@@ -65,11 +67,11 @@ export function usePosAccess(online: boolean) {
 
       const membership = await client.from("business_memberships").select("business_id,role").eq("is_active", true).order("created_at").limit(1).maybeSingle();
       if (!current) return;
-      if (membership.error) return finish(cached);
+      if (membership.error) return finish(contextAfterFailedCheck(membership, cached, navigator.onLine));
       if (!membership.data) return finish(null);
       const business = await client.from("businesses").select("name").eq("id", membership.data.business_id).maybeSingle();
       if (!current) return;
-      if (business.error) return finish(cached);
+      if (business.error) return finish(contextAfterFailedCheck(business, cached, navigator.onLine));
       if (!business.data) return finish(null);
 
       const next: LocalAccessContext = {

@@ -35,16 +35,21 @@ export async function listPriceLists(businessId: string): Promise<PriceList[]> {
   return data ?? [];
 }
 
+/** Una lista de proveedor puede superar las 1000 filas de PostgREST: se pagina con orden estable. */
 export async function loadListItems(businessId: string, listId: string): Promise<CatalogItem[]> {
-  const { data, error } = await db()
-    .from("supplier_catalog_items")
-    .select("id,detected_name,detected_presentation,supplier_code,barcode,suggested_retail_price_cents,product_variant_id,match_status,match_reason,create_catalog_product,apply_to_catalog,warnings,supplier_purchase_options(id,purchase_unit,stock_units_per_purchase,purchase_price_cents,units_paid,units_bonus,effective_unit_cost_cents,is_selected)")
-    .eq("price_list_id", listId)
-    .eq("business_id", businessId)
-    .order("created_at");
-  if (error) throw error;
+  const supabase = db();
+  const rows = await fetchAllRows((from, to) =>
+    supabase
+      .from("supplier_catalog_items")
+      .select("id,detected_name,detected_presentation,supplier_code,barcode,suggested_retail_price_cents,product_variant_id,match_status,match_reason,create_catalog_product,apply_to_catalog,warnings,supplier_purchase_options(id,purchase_unit,stock_units_per_purchase,purchase_price_cents,units_paid,units_bonus,effective_unit_cost_cents,is_selected)")
+      .eq("price_list_id", listId)
+      .eq("business_id", businessId)
+      .order("created_at")
+      .order("id")
+      .range(from, to),
+  );
   // El select anidado no se infiere desde los tipos generados; la forma está fijada por la consulta.
-  return (data ?? []) as unknown as CatalogItem[];
+  return rows as unknown as CatalogItem[];
 }
 
 export async function loadVariantPrices(businessId: string): Promise<Record<string, VariantPriceInfo>> {
